@@ -11,54 +11,86 @@
 </head>
 <body>
   <header class="top">
-    <h1 id="title">Exercícios</h1>
-    <button id="conn" class="chip off">Conectar sensor</button>
+    <button id="btnBack" class="icon" aria-label="Concluir exercício e voltar" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <div class="titles">
+      <h1 id="title">Treinar</h1>
+      <p id="subtitle"></p>
+    </div>
+    <button id="conn" class="chip off">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10-5 4V3l5 4L7 17"/></svg>
+      <span id="connText">Conectar</span>
+    </button>
   </header>
 
   <div id="toast" class="toast" role="status" hidden></div>
   <p id="unsupported" class="banner" hidden>Este navegador não tem Bluetooth. Use o Chrome no Android.</p>
 
   <main>
-    <!-- Lista de exercícios -->
+    <!-- Início: resumo da semana e exercícios -->
     <section id="home" class="view">
+      <div class="week">
+        <div class="week-head">
+          <span>Esta semana</span>
+          <ol id="weekDots" class="dots" aria-label="Dias treinados nesta semana"></ol>
+        </div>
+        <div id="weekStats" class="week-stats"></div>
+      </div>
+      <div id="filters" class="filters" role="tablist" aria-label="Filtrar por grupo muscular"></div>
       <ul id="exList" class="list"></ul>
-      <button id="btnAdd" class="wide">+ Novo exercício</button>
     </section>
 
     <!-- Treino em andamento -->
     <section id="workout" class="view" hidden>
-      <p id="wWarn" class="banner" hidden>Sensor desconectado. Toque em "Conectar sensor" acima.</p>
-      <p id="wInfo" class="sub"></p>
-      <div class="load">
-        <button id="btnLoadMinus" aria-label="Diminuir carga">−5</button>
-        <label>Carga (kg)<input id="wLoad" type="number" inputmode="decimal" min="0" step="0.5" placeholder="—"></label>
-        <button id="btnLoadPlus" aria-label="Aumentar carga">+5</button>
+      <p id="wWarn" class="banner" hidden>Sensor desconectado. Toque em "Conectar" acima.</p>
+      <p id="wSuggest" class="note" hidden><span id="wSuggestText"></span><button id="btnSuggest" class="primary"></button></p>
+
+      <div id="hero" class="hero">
+        <svg class="ring" viewBox="0 0 240 240" aria-hidden="true">
+          <circle class="track" cx="120" cy="120" r="104"/>
+          <circle id="ringArc" class="arc" cx="120" cy="120" r="104" transform="rotate(-90 120 120)"/>
+        </svg>
+        <div class="center">
+          <div id="wStatus" class="status"></div>
+          <div id="wBig" class="big">0</div>
+          <div id="wSub" class="subline"></div>
+        </div>
+      </div>
+
+      <ol id="wPills" class="pills" aria-label="Séries"></ol>
+
+      <div id="repCtl" class="ctl">
+        <button id="btnMinus">−1 rep</button>
+        <button id="btnPlus">+1 rep</button>
+      </div>
+      <div id="restCtl" class="ctl" hidden>
+        <button id="btnRestMinus">−15 s</button>
+        <span id="restTarget"></span>
+        <button id="btnRestPlus">+15 s</button>
+      </div>
+
+      <div class="loadcard">
+        <button id="btnLoadMinus" aria-label="Diminuir carga em 5 kg">−5</button>
+        <label>
+          <span>Carga</span>
+          <span class="loadval"><input id="wLoad" type="number" inputmode="decimal" min="0" step="0.5" placeholder="—"><i>kg</i></span>
+        </label>
+        <button id="btnLoadPlus" aria-label="Aumentar carga em 5 kg">+5</button>
       </div>
       <p id="wLoadHint" class="hint" hidden>Sugestão para iniciante de 80 kg. Ajuste para a carga que você usar.</p>
-      <p id="wSuggest" class="note" hidden><span id="wSuggestText"></span><button id="btnSuggest" class="primary"></button></p>
-      <div id="wCard" class="card">
-        <div id="wStatus" class="status">Pronto. Comece a série.</div>
-        <div class="count"><span id="wReps">0</span><small id="wTarget"></small></div>
-        <div class="adjust">
-          <button id="btnMinus" aria-label="Tirar uma repetição">−1</button>
-          <span id="wSet">Série 1</span>
-          <button id="btnPlus" aria-label="Somar uma repetição">+1</button>
-        </div>
+
+      <div class="facts">
+        <div><b id="wVolume">0 kg</b><small>volume</small></div>
+        <div><b id="wGoal"></b><small>meta</small></div>
+        <div><b id="wRestGoal"></b><small>descanso</small></div>
       </div>
-      <div id="restCard" class="card rest" hidden>
-        <div id="restLabel" class="status">Descanso</div>
-        <div id="restTime" class="timer">1:00</div>
-        <div class="bar"><i id="restBar"></i></div>
-        <div class="adjust">
-          <button id="btnRestMinus">−15 s</button>
-          <span id="restTarget"></span>
-          <button id="btnRestPlus">+15 s</button>
-        </div>
-      </div>
-      <ol id="wSets" class="sets"></ol>
-      <div class="actions">
+
+      <ol id="wSets" class="log"></ol>
+
+      <div class="dock">
         <button id="btnEndSet">Encerrar série</button>
-        <button id="btnFinish" class="primary">Concluir exercício</button>
+        <button id="btnFinish" class="primary">Concluir</button>
       </div>
     </section>
 
@@ -94,53 +126,78 @@
     <!-- Ajustes -->
     <section id="settings" class="view" hidden>
       <h2>Sensor</h2>
-      <dl class="info">
-        <dt>Estado</dt><dd id="sState">Desconectado</dd>
-        <dt>Bateria</dt><dd id="sBattery">—</dd>
-        <dt>Taxa medida</dt><dd id="sRate">—</dd>
-      </dl>
-      <div class="actions">
-        <button id="btnDisconnect" disabled>Desconectar</button>
-        <button id="btnDemo">Modo demonstração</button>
+      <div class="panel">
+        <dl class="info">
+          <dt>Estado</dt><dd id="sState">Desconectado</dd>
+          <dt>Bateria</dt><dd id="sBattery">—</dd>
+          <dt>Taxa medida</dt><dd id="sRate">—</dd>
+        </dl>
+        <div class="actions">
+          <button id="btnDisconnect" disabled>Desconectar</button>
+          <button id="btnDemo">Modo demonstração</button>
+        </div>
       </div>
       <h2>Avisos</h2>
-      <label class="toggle"><input id="oSound" type="checkbox"> Som</label>
-      <label class="toggle"><input id="oVibrate" type="checkbox"> Vibração</label>
+      <div class="panel rows">
+        <label class="toggle"><span>Som</span><input id="oSound" type="checkbox" role="switch"></label>
+        <label class="toggle"><span>Vibração</span><input id="oVibrate" type="checkbox" role="switch"></label>
+      </div>
       <h2>Detecção</h2>
-      <label class="field">Sem movimento para encerrar a série (s)<input id="oRestDetect" type="number" inputmode="decimal" min="1" step="0.5"></label>
-      <label class="field">Velocidade mínima (m/s)<input id="oVelOn" type="number" inputmode="decimal" min="0.01" step="0.01"></label>
-      <label class="field">Amplitude mínima (m)<input id="oMinRange" type="number" inputmode="decimal" min="0.01" step="0.01"></label>
-      <label class="field">Limiar de parado (m/s²)<input id="oStillAcc" type="number" inputmode="decimal" min="0.01" step="0.01"></label>
-      <button id="btnDefaults" class="wide">Restaurar padrões de detecção</button>
+      <div class="panel">
+        <label class="field">Sem movimento para encerrar a série (s)<input id="oRestDetect" type="number" inputmode="decimal" min="1" step="0.5"></label>
+        <label class="field">Velocidade mínima (m/s)<input id="oVelOn" type="number" inputmode="decimal" min="0.01" step="0.01"></label>
+        <label class="field">Amplitude mínima (m)<input id="oMinRange" type="number" inputmode="decimal" min="0.01" step="0.01"></label>
+        <label class="field">Limiar de parado (m/s²)<input id="oStillAcc" type="number" inputmode="decimal" min="0.01" step="0.01"></label>
+        <button id="btnDefaults" class="wide">Restaurar padrões</button>
+      </div>
       <h2>Dados</h2>
-      <div class="stack">
+      <div class="panel stack">
         <button id="btnExport">Exportar backup (JSON)</button>
         <button id="btnCsv">Exportar treinos (CSV)</button>
         <button id="btnImport">Importar backup (JSON)</button>
         <input id="fileImport" type="file" accept="application/json,.json" hidden>
+        <p id="dataInfo" class="hint"></p>
       </div>
-      <p id="dataInfo" class="hint"></p>
-      <p class="sub"><a href="lab.html">Abrir o WitMotion Lab</a> (gráficos, protocolo e gravação de CSV)</p>
+      <p class="sub foot"><a href="lab.html">Abrir o WitMotion Lab</a> para gráficos, protocolo e gravação de CSV.</p>
     </section>
   </main>
 
+  <div class="fab-anchor">
+    <button id="btnAdd" class="fab" aria-label="Novo exercício">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+  </div>
+
   <nav id="tabs" class="tabs">
-    <button data-view="home" class="on">Exercícios</button>
-    <button data-view="progress">Progresso</button>
-    <button data-view="history">Histórico</button>
-    <button data-view="settings">Ajustes</button>
+    <button data-view="home" class="on">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6M6 6v12M18 6v12M21 9v6M6 12h12"/></svg>
+      <span>Treinar</span>
+    </button>
+    <button data-view="progress">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M5 15l4-5 4 3 6-8"/></svg>
+      <span>Progresso</span>
+    </button>
+    <button data-view="history">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+      <span>Histórico</span>
+    </button>
+    <button data-view="settings">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+      <span>Ajustes</span>
+    </button>
   </nav>
 
   <dialog id="dlg">
     <form method="dialog" id="exForm">
+      <div class="grabber" aria-hidden="true"></div>
       <h2 id="dlgTitle">Novo exercício</h2>
       <label class="field">Nome<input id="fName" type="text" required maxlength="40" autocomplete="off"></label>
       <div class="grid2">
-        <label class="field">Descanso (s)<input id="fRest" type="number" inputmode="numeric" min="5" max="900" step="5" required></label>
+        <label class="field">Grupo muscular<select id="fMuscle"></select></label>
         <label class="field">Carga (kg)<input id="fLoad" type="number" inputmode="decimal" min="0" step="0.5"></label>
         <label class="field">Séries<input id="fSets" type="number" inputmode="numeric" min="1" max="20" required></label>
         <label class="field">Repetições<input id="fReps" type="number" inputmode="numeric" min="1" max="100" required></label>
-        <label class="field">Grupo muscular<select id="fMuscle"></select></label>
+        <label class="field">Descanso (s)<input id="fRest" type="number" inputmode="numeric" min="5" max="900" step="5" required></label>
         <label class="field">Aumento de carga (kg)<input id="fStep" type="number" inputmode="decimal" min="0.5" step="0.5" required></label>
       </div>
       <div class="actions">

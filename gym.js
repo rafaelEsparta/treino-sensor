@@ -229,7 +229,7 @@ function setMode(mode) {
   sensor.mode = mode;
   const chip = $('conn');
   chip.className = `chip ${mode === 'connecting' ? 'busy' : mode}`;
-  chip.textContent = { off: 'Conectar sensor', connecting: 'Conectando…', on: 'Sensor conectado', sim: 'Demonstração' }[mode];
+  $('connText').textContent = { off: 'Conectar', connecting: 'Conectando…', on: sensor.battery ? `Sensor · ${sensor.battery.percent}%` : 'Sensor', sim: 'Demo' }[mode];
   $('sState').textContent = { off: 'Desconectado', connecting: 'Conectando…', on: sensor.device?.name || 'Conectado', sim: 'Modo demonstração' }[mode];
   $('btnDisconnect').disabled = mode !== 'on';
   $('btnDemo').textContent = mode === 'sim' ? 'Parar demonstração' : 'Modo demonstração';
@@ -261,6 +261,7 @@ function onNotification(event) {
       if (r.kind === 'battery') {
         sensor.battery = r;
         $('sBattery').textContent = `${num(r.volts, 2)} V · ${r.percent}%`;
+        if (sensor.mode === 'on') $('connText').textContent = `Sensor · ${r.percent}%`;
       }
     }
   }
@@ -360,16 +361,23 @@ function toggleDemo() {
 }
 
 // ---------- navegação ----------
-const TITLES = { home: 'Exercícios', progress: 'Progresso', history: 'Histórico', settings: 'Ajustes' };
+const TITLES = { home: 'Treinar', progress: 'Progresso', history: 'Histórico', settings: 'Ajustes' };
 function show(next) {
   view = next;
   for (const v of ['home', 'workout', 'progress', 'history', 'settings']) $(v).hidden = v !== next;
   $('tabs').hidden = next === 'workout';
+  $('btnBack').hidden = next !== 'workout';
+  $('btnAdd').hidden = next !== 'home';
   $('title').textContent = next === 'workout' ? active.exercise.name : TITLES[next];
+  $('subtitle').textContent =
+    next === 'workout' ? active.exercise.muscle || ''
+    : next === 'home' ? new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
+    : '';
   for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.view === next);
   if (next === 'home') renderExercises();
   if (next === 'history') renderHistory();
   if (next === 'progress') renderProgress();
+  document.querySelector('main').scrollTop = 0;
   dirty = true;
 }
 for (const b of $('tabs').children) b.onclick = () => show(b.dataset.view);
@@ -389,13 +397,71 @@ function setLoad(value) {
   $('wLoad').value = ex.load ?? '';
   dirty = true;
 }
-function renderExercises() {
-  $('exList').innerHTML = store.exercises.length
-    ? store.exercises
-        .map((ex) => `<li><button class="go" data-id="${ex.id}"><em>${esc(ex.muscle || 'Outro')}</em><b>${esc(ex.name)}</b><small>${describe(ex)}</small></button><button class="edit" data-edit="${ex.id}">Editar</button></li>`)
-        .join('')
-    : '<li class="empty">Nenhum exercício. Crie o primeiro abaixo.</li>';
+let muscleFilter = 'Todos';
+
+function ago(date) {
+  const days = Math.round((new Date(dayKey(new Date())) - new Date(dayKey(date))) / 864e5);
+  if (days <= 0) return 'hoje';
+  if (days === 1) return 'ontem';
+  if (days < 14) return `há ${days} dias`;
+  if (days < 60) return `há ${Math.round(days / 7)} semanas`;
+  return `há ${Math.round(days / 30)} meses`;
 }
+const initials = (name) => name.split(/\s+/).filter((w) => /[\p{L}\d]/u.test(w)).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+const DOTS = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>';
+
+function renderWeek() {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const todayIdx = (start.getDay() + 6) % 7; // segunda = 0
+  start.setDate(start.getDate() - todayIdx);
+  const entries = store.history.filter((e) => new Date(e.date) >= start);
+  const t = totals(entries);
+  const trained = new Set(entries.map((e) => (new Date(e.date).getDay() + 6) % 7));
+  $('weekDots').innerHTML = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D']
+    .map((d, i) => `<li class="${trained.has(i) ? 'on' : ''}${i === todayIdx ? ' today' : ''}">${d}</li>`)
+    .join('');
+  $('weekStats').innerHTML = `
+    <div><b>${t.days}</b><small>${t.days === 1 ? 'dia de treino' : 'dias de treino'}</small></div>
+    <div><b>${t.sets}</b><small>séries</small></div>
+    <div><b>${t.volume >= 1000 ? `${num(t.volume / 1000, 1)} t` : `${int(t.volume)} kg`}</b><small>volume</small></div>`;
+}
+
+function renderExercises() {
+  renderWeek();
+  const used = MUSCLES.filter((m) => store.exercises.some((x) => (x.muscle || 'Outro') === m));
+  if (!used.includes(muscleFilter)) muscleFilter = 'Todos';
+  $('filters').hidden = used.length < 2;
+  $('filters').innerHTML = ['Todos', ...used]
+    .map((m) => `<button role="tab" aria-selected="${m === muscleFilter}" class="${m === muscleFilter ? 'on' : ''}" data-muscle="${m}">${m}</button>`)
+    .join('');
+  const list = store.exercises.filter((x) => muscleFilter === 'Todos' || (x.muscle || 'Outro') === muscleFilter);
+  $('exList').innerHTML = list.length
+    ? list
+        .map((ex) => {
+          const entries = exerciseEntries(store.history, ex);
+          const last = entries[entries.length - 1];
+          const up = suggestLoad(ex, entries);
+          const load = ex.load ? ` · ${kg(ex.load)}` : '';
+          const lastLine = last
+            ? `Último: ${ago(last.date)} · ${last.sets.map((x) => x.reps).join(' · ')}`
+            : ex.suggested && ex.load ? 'Carga sugerida para começar' : 'Ainda não feito';
+          return `<li><button class="go" data-id="${ex.id}">
+            <span class="avatar" aria-hidden="true">${esc(initials(ex.name))}</span>
+            <span class="body"><b>${esc(ex.name)}</b>
+              <small>${ex.sets} × ${ex.reps}${load} · ${ex.rest} s${up ? '<span class="badge">↑ subir carga</span>' : ''}</small>
+              <small class="last">${lastLine}</small></span>
+          </button><button class="more" data-edit="${ex.id}" aria-label="Editar ${esc(ex.name)}">${DOTS}</button></li>`;
+        })
+        .join('')
+    : '<li class="empty">Nenhum exercício. Toque em + para criar o primeiro.</li>';
+}
+$('filters').onclick = (e) => {
+  const b = e.target.closest('[data-muscle]');
+  if (!b) return;
+  muscleFilter = b.dataset.muscle;
+  renderExercises();
+};
 $('exList').onclick = (e) => {
   const go = e.target.closest('[data-id]');
   const edit = e.target.closest('[data-edit]');
@@ -503,6 +569,7 @@ $('btnEndSet').onclick = () => {
   if (rc.finishSet()) startRest(0);
 };
 $('btnFinish').onclick = finishExercise;
+$('btnBack').onclick = finishExercise;
 $('btnRestPlus').onclick = () => {
   active.restTarget += 15;
   active.restAlerted = false;
@@ -513,45 +580,78 @@ $('btnRestMinus').onclick = () => {
   dirty = true;
 };
 
+const RING = 2 * Math.PI * 104;
+let shownReps = 0;
+
 function renderWorkout() {
   const ex = active.exercise;
   const resting = rc.state === 'rest' && active.restWallStart !== null;
   const done = rc.sets.length;
   $('wWarn').hidden = sensor.mode === 'on' || sensor.mode === 'sim';
-  const closedVolume = rc.sets.reduce((sum, s) => sum + s.reps * (s.load ?? ex.load ?? 0), 0);
-  const volume = closedVolume + (rc.state === 'set' ? rc.reps * (ex.load || 0) : 0);
-  $('wInfo').textContent = `${ex.sets} × ${ex.reps} · descanso ${ex.rest} s · volume ${int(volume)} kg`;
-  $('wLoadHint').hidden = !ex.suggested;
+
   const sug = active.suggestion;
-  $('wSuggest').hidden = !sug || rc.sets.length > 0 || (ex.load || 0) >= sug.load;
+  $('wSuggest').hidden = !sug || done > 0 || (ex.load || 0) >= sug.load;
   if (sug) {
     $('wSuggestText').textContent = `Você fez ${sug.sets} × ${sug.reps} com ${kg(sug.from)} na última vez. Hora de subir.`;
     $('btnSuggest').textContent = `Usar ${kg(sug.load)}`;
   }
-  $('wCard').classList.toggle('dim', resting);
-  $('wReps').textContent = resting ? rc.sets[done - 1].reps : rc.reps;
-  $('wTarget').textContent = `/ ${ex.reps}`;
-  $('wSet').textContent = `Série ${resting ? done : rc.setIndex || 1} de ${ex.sets}`;
-  $('wStatus').textContent = resting ? 'Série encerrada' : rc.state === 'set' ? 'Contando' : 'Pronto. Comece a série.';
-  $('btnEndSet').disabled = rc.state !== 'set';
-  $('restCard').hidden = !resting;
+  $('wLoadHint').hidden = !ex.suggested;
+
+  // anel: repetições da série, ou contagem regressiva do descanso
+  const hero = $('hero');
+  let fraction;
+  let over = false;
   if (resting) {
     const elapsed = (Date.now() - active.restWallStart) / 1000;
     const rem = active.restTarget - elapsed;
-    const over = rem <= 0;
-    $('restCard').classList.toggle('done', over);
-    $('restTime').textContent = over ? `+${mmss(-rem)}` : mmss(Math.ceil(rem));
-    $('restBar').style.width = `${Math.min(100, (elapsed / active.restTarget) * 100)}%`;
+    over = rem <= 0;
+    fraction = over ? 1 : rem / active.restTarget;
+    $('wBig').textContent = over ? `+${mmss(-rem)}` : mmss(Math.ceil(rem));
+    $('wStatus').textContent = over ? (done >= ex.sets ? 'Séries feitas' : 'Próxima série') : 'Descanso';
+    $('wSub').textContent = `última: ${rc.sets[done - 1].reps} reps`;
     $('restTarget').textContent = `de ${mmss(active.restTarget)}`;
-    $('restLabel').textContent = !over ? 'Descanso' : done >= ex.sets ? 'Descanso concluído. Séries planejadas feitas.' : 'Descanso concluído. Próxima série!';
     if (over && !active.restAlerted) {
       active.restAlerted = true;
       beep(660, 250, 3);
       vibrate([300, 150, 300, 150, 300]);
     }
+    shownReps = 0;
+  } else {
+    fraction = Math.min(1, rc.reps / ex.reps);
+    $('wBig').textContent = rc.reps;
+    $('wStatus').textContent = rc.state === 'set' ? `Série ${rc.setIndex}` : 'Pronto';
+    $('wSub').textContent = rc.state === 'set' ? `de ${ex.reps}` : 'comece a série';
+    if (rc.reps > shownReps) {
+      const big = $('wBig');
+      big.classList.remove('pulse');
+      void big.offsetWidth; // reinicia a animação
+      big.classList.add('pulse');
+    }
+    shownReps = rc.reps;
   }
+  hero.classList.toggle('rest', resting);
+  hero.classList.toggle('over', over);
+  $('ringArc').style.strokeDashoffset = RING * (1 - fraction);
+  $('repCtl').hidden = resting;
+  $('restCtl').hidden = !resting;
+
+  // uma pílula por série: feitas, a atual e as que faltam
+  const slots = Math.max(ex.sets, done + (rc.state === 'set' ? 1 : 0));
+  let pills = '';
+  for (let i = 0; i < slots; i++) {
+    if (i < done) pills += `<li class="done${rc.sets[i].pr ? ' pr' : ''}" aria-label="Série ${i + 1}: ${rc.sets[i].reps} repetições">${rc.sets[i].reps}${rc.sets[i].pr ? '★' : ''}</li>`;
+    else if (i === done) pills += `<li class="cur" aria-label="Série ${i + 1}, atual">${rc.state === 'set' ? rc.reps : i + 1}</li>`;
+    else pills += `<li aria-label="Série ${i + 1}, a fazer">${i + 1}</li>`;
+  }
+  $('wPills').innerHTML = pills;
+
+  const closedVolume = rc.sets.reduce((sum, s) => sum + s.reps * (s.load ?? ex.load ?? 0), 0);
+  $('wVolume').textContent = `${int(closedVolume + (rc.state === 'set' ? rc.reps * (ex.load || 0) : 0))} kg`;
+  $('wGoal').textContent = `${ex.sets} × ${ex.reps}`;
+  $('wRestGoal').textContent = mmss(ex.rest);
+  $('btnEndSet').disabled = rc.state !== 'set';
   $('wSets').innerHTML = rc.sets
-    .map((s, i) => `<li${s.pr ? ' class="pr"' : ''}>${i + 1}ª <b>${s.reps}</b> reps${s.load ? ` × ${kg(s.load)}` : ''}${s.pr ? '<em>★ recorde</em>' : ''}${s.restActual === null ? '' : `<small>descanso ${mmss(s.restActual)}</small>`}</li>`)
+    .map((s, i) => `<li><span>${i + 1}ª série</span><b>${s.reps} reps${s.load ? ` × ${kg(s.load)}` : ''}</b>${s.pr ? '<em>★ recorde</em>' : ''}${s.restActual === null ? '' : `<small>descanso ${mmss(s.restActual)}</small>`}</li>`)
     .join('');
 }
 
@@ -559,27 +659,32 @@ function renderWorkout() {
 function renderHistory() {
   const days = new Map();
   for (const e of [...store.history].reverse()) {
-    const day = new Date(e.date).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
-    if (!days.has(day)) days.set(day, []);
-    days.get(day).push(e);
+    const key = dayKey(e.date);
+    if (!days.has(key)) days.set(key, []);
+    days.get(key).push(e);
   }
   $('btnClearHist').hidden = !store.history.length;
   $('histList').innerHTML = days.size
     ? [...days]
-        .map(([day, entries]) => `<div class="day"><h2>${esc(day)}</h2>${entries
-          .map((e) => {
-            const loads = e.sets.map((s) => s.load ?? e.load ?? null);
-            const same = loads.every((l) => l === loads[0]);
-            const title = same && loads[0] ? ` · ${kg(loads[0])}` : '';
-            const reps = same
-              ? `${e.sets.map((s) => `${s.reps}${s.pr ? '★' : ''}`).join(' · ')} reps`
-              : e.sets.map((s, i) => `${s.reps} × ${loads[i] ? kg(loads[i]) : 'sem carga'}${s.pr ? '★' : ''}`).join(' · ');
-            const rests = e.sets.filter((s) => s.rest !== null).map((s) => mmss(s.rest));
-            return `<div class="entry"><b>${esc(e.name)}${title}</b><span>${reps}${rests.length ? ` · descansos ${rests.join(', ')}` : ''}</span></div>`;
-          })
-          .join('')}</div>`)
+        .map(([key, entries]) => {
+          const label = new Date(`${key}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+          const t = totals(entries);
+          return `<div class="day"><div class="day-head"><h2>${esc(label)}</h2><span>${t.sets} séries · ${tons(t.volume)}</span></div>${entries
+            .map((e) => {
+              const time = new Date(e.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+              const reps = e.sets
+                .map((s) => {
+                  const load = s.load ?? e.load ?? null;
+                  return `<li class="${s.pr ? 'pr' : ''}">${s.reps}${load ? ` <small>× ${kg(load)}</small>` : ''}${s.pr ? ' ★' : ''}</li>`;
+                })
+                .join('');
+              const rests = e.sets.filter((s) => s.rest !== null && s.rest !== undefined).map((s) => mmss(s.rest));
+              return `<div class="entry"><div class="entry-top"><b>${esc(e.name)}</b><span>${time}</span></div><ol class="reps">${reps}</ol>${rests.length ? `<p>Descansos: ${rests.join(' · ')}</p>` : ''}</div>`;
+            })
+            .join('')}</div>`;
+        })
         .join('')
-    : '<p class="empty">Nenhum treino registrado ainda.</p>';
+    : '<p class="empty">Nenhum treino registrado ainda.<br>Escolha um exercício em Treinar para começar.</p>';
 }
 $('btnClearHist').onclick = () => {
   if (!confirm('Apagar todo o histórico? Não dá para desfazer.')) return;
