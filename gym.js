@@ -3,6 +3,9 @@
 import { Commands, FrameParser, UUID, interpretRegister } from './src/witmotion.js';
 import { DEFAULTS, RepCounter } from './src/repcounter.js';
 import { simulate, workoutScript } from './src/simulator.js';
+import {
+  MUSCLES, activityByDay, dayKey, e1rm, e1rmSeries, entryVolume, exerciseEntries, muscleVolume, records, suggestLoad, toCSV, totals, validateImport,
+} from './src/stats.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -17,21 +20,22 @@ const DEFAULT_REST = 90;
 // Exercícios padrão: [nome, carga sugerida em kg para iniciante de 80 kg].
 // São pontos de partida conservadores; a numeração varia entre máquinas.
 const DEFAULT_EXERCISES = [
-  ['Agachamento livre', 40], // barra de 20 kg + 10 kg de cada lado
-  ['Leg press 45', 80],
-  ['Leg press horizontal', 60],
-  ['Cadeira extensora', 30],
-  ['Cadeira abdutora', 30],
-  ['Cadeira adutora', 30],
-  ['Stiff', 30],
-  ['Mesa flexora', 20],
-  ['Cadeira flexora', 25],
-  ['Puxada alta', 30],
-  ['Remada baixa', 30],
+  ['Agachamento livre', 40, 'Quadríceps'], // barra de 20 kg + 10 kg de cada lado
+  ['Leg press 45', 80, 'Quadríceps'],
+  ['Leg press horizontal', 60, 'Quadríceps'],
+  ['Cadeira extensora', 30, 'Quadríceps'],
+  ['Cadeira abdutora', 30, 'Glúteos'],
+  ['Cadeira adutora', 30, 'Adutores'],
+  ['Stiff', 30, 'Posteriores'],
+  ['Mesa flexora', 20, 'Posteriores'],
+  ['Cadeira flexora', 25, 'Posteriores'],
+  ['Puxada alta', 30, 'Costas'],
+  ['Remada baixa', 30, 'Costas'],
 ];
-const newDefault = ([name, load]) => ({ id: uid(), name, rest: DEFAULT_REST, sets: 3, reps: 12, load, suggested: true });
+const DEFAULT_STEP = 5;
+const newDefault = ([name, load, muscle]) => ({ id: uid(), name, rest: DEFAULT_REST, sets: 3, reps: 12, load, step: DEFAULT_STEP, muscle, suggested: true });
 const defaultStore = () => ({
-  version: 2,
+  version: 3,
   exercises: DEFAULT_EXERCISES.map(newDefault),
   history: [],
   settings: { sound: true, vibrate: true, ...Object.fromEntries(DETECTION.map((k) => [k, DEFAULTS[k]])) },
@@ -42,7 +46,8 @@ function loadStore() {
     const saved = JSON.parse(localStorage.getItem(KEY));
     if (saved && Array.isArray(saved.exercises)) {
       const merged = { ...base, ...saved, settings: { ...base.settings, ...saved.settings } };
-      if (saved.version !== 2) migrateToV2(merged);
+      if (!(saved.version >= 2)) migrateToV2(merged);
+      if (!(saved.version >= 3)) migrateToV3(merged);
       return merged;
     }
   } catch {
@@ -64,6 +69,22 @@ function migrateToV2(s) {
     }
   }
   s.version = 2;
+}
+/** Versão 3: grupo muscular e aumento de carga por exercício; histórico ligado ao exercício. */
+function migrateToV3(s) {
+  const muscleByName = new Map(DEFAULT_EXERCISES.map(([name, , muscle]) => [name, muscle]));
+  for (const x of s.exercises) {
+    x.muscle ??= muscleByName.get(x.name) || 'Outro';
+    x.step ??= DEFAULT_STEP;
+  }
+  for (const e of s.history) {
+    const x = s.exercises.find((y) => y.name === e.name);
+    if (x) {
+      e.exId ??= x.id;
+      e.muscle ??= x.muscle;
+    }
+  }
+  s.version = 3;
 }
 const store = loadStore();
 function save() {
@@ -111,6 +132,14 @@ function beep(freq, ms, count = 1) {
     /* sem áudio */
   }
 }
+let toastTimer = null;
+function toast(text) {
+  const el = $('toast');
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (el.hidden = true), 4000);
+}
 function vibrate(pattern) {
   if (store.settings.vibrate && navigator.vibrate) navigator.vibrate(pattern);
 }
@@ -149,6 +178,7 @@ function startRest(alreadyElapsedMs = 0) {
   // A série que acabou de fechar foi feita com a carga atual.
   const last = rc.sets[rc.sets.length - 1];
   if (last && last.load === undefined) last.load = active.exercise.load;
+  checkRecord(last);
   active.restWallStart = Date.now() - alreadyElapsedMs;
   active.restTarget = active.exercise.rest;
   active.restAlerted = false;
@@ -156,17 +186,37 @@ function startRest(alreadyElapsedMs = 0) {
   dirty = true;
 }
 
+/** Compara a série recém-fechada com tudo o que já foi feito neste exercício. */
+function checkRecord(set) {
+  if (!set || set.pr !== undefined) return;
+  set.pr = null;
+  if (!set.load || !set.reps) return;
+  const previous = exerciseEntries(store.history, active.exercise).filter((e) => e !== active.entry);
+  if (!previous.length) return; // primeira vez no exercício: é a referência, não recorde
+  const earlier = rc.sets.filter((s) => s !== set).map((s) => ({ reps: s.reps, load: s.load ?? null }));
+  const best = records([...previous, { load: null, sets: earlier }]);
+  const kinds = [];
+  if (set.load > best.maxLoad) kinds.push('carga');
+  if (e1rm(set.load, set.reps) > best.bestE1rm + 0.01) kinds.push('1RM estimado');
+  if (!kinds.length) return;
+  set.pr = kinds;
+  toast(`Recorde de ${kinds.join(' e ')}!`);
+  beep(1320, 120, 2);
+}
+
 /** Copia as séries concluídas para o histórico (cria a entrada na primeira). */
 function persist() {
   if (!active || !rc.sets.length) return;
   if (!active.entry) {
-    active.entry = { id: uid(), date: new Date().toISOString(), name: active.exercise.name, load: active.exercise.load, sets: [] };
+    const x = active.exercise;
+    active.entry = { id: uid(), date: new Date().toISOString(), name: x.name, exId: x.id, muscle: x.muscle, load: x.load, sets: [] };
     store.history.push(active.entry);
   }
   active.entry.load = active.exercise.load;
   active.entry.sets = rc.sets.map((s) => ({
     reps: s.reps,
     load: s.load ?? null,
+    pr: s.pr || null,
     duration: Math.round(s.duration),
     rest: s.restActual === null ? null : Math.round(s.restActual),
     range: s.repDetails.length ? s.repDetails.reduce((a, r) => a + r.range, 0) / s.repDetails.length : null,
@@ -310,20 +360,22 @@ function toggleDemo() {
 }
 
 // ---------- navegação ----------
-const TITLES = { home: 'Exercícios', history: 'Histórico', settings: 'Ajustes' };
+const TITLES = { home: 'Exercícios', progress: 'Progresso', history: 'Histórico', settings: 'Ajustes' };
 function show(next) {
   view = next;
-  for (const v of ['home', 'workout', 'history', 'settings']) $(v).hidden = v !== next;
+  for (const v of ['home', 'workout', 'progress', 'history', 'settings']) $(v).hidden = v !== next;
   $('tabs').hidden = next === 'workout';
   $('title').textContent = next === 'workout' ? active.exercise.name : TITLES[next];
   for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.view === next);
   if (next === 'home') renderExercises();
   if (next === 'history') renderHistory();
+  if (next === 'progress') renderProgress();
   dirty = true;
 }
 for (const b of $('tabs').children) b.onclick = () => show(b.dataset.view);
 
 // ---------- exercícios ----------
+const int = (v) => Math.round(v).toLocaleString('pt-BR');
 const kg = (v) => `${num(v, v % 1 ? 1 : 0)} kg`;
 function describe(ex) {
   const load = ex.load ? ` · ${kg(ex.load)}${ex.suggested ? ' (sugestão)' : ''}` : '';
@@ -340,7 +392,7 @@ function setLoad(value) {
 function renderExercises() {
   $('exList').innerHTML = store.exercises.length
     ? store.exercises
-        .map((ex) => `<li><button class="go" data-id="${ex.id}"><b>${esc(ex.name)}</b><small>${describe(ex)}</small></button><button class="edit" data-edit="${ex.id}">Editar</button></li>`)
+        .map((ex) => `<li><button class="go" data-id="${ex.id}"><em>${esc(ex.muscle || 'Outro')}</em><b>${esc(ex.name)}</b><small>${describe(ex)}</small></button><button class="edit" data-edit="${ex.id}">Editar</button></li>`)
         .join('')
     : '<li class="empty">Nenhum exercício. Crie o primeiro abaixo.</li>';
 }
@@ -361,6 +413,9 @@ function openEditor(ex) {
   $('fSets').value = ex?.sets ?? 3;
   $('fReps').value = ex?.reps ?? 12;
   $('fLoad').value = ex?.load ?? '';
+  $('fMuscle').innerHTML = MUSCLES.map((m) => `<option>${m}</option>`).join('');
+  $('fMuscle').value = ex?.muscle ?? 'Outro';
+  $('fStep').value = ex?.step ?? DEFAULT_STEP;
   $('fDelete').hidden = !ex;
   $('dlg').showModal();
 }
@@ -379,6 +434,8 @@ $('exForm').onsubmit = () => {
     sets: Number($('fSets').value),
     reps: Number($('fReps').value),
     load: $('fLoad').value === '' ? null : Number($('fLoad').value),
+    muscle: $('fMuscle').value,
+    step: Number($('fStep').value) || DEFAULT_STEP,
   };
   if (editing) {
     if (data.load !== editing.load) editing.suggested = false;
@@ -398,13 +455,17 @@ function startExercise(ex) {
   rc.cfg.restTarget = ex.rest;
   active = { exercise: ex, entry: null, restWallStart: null, restTarget: ex.rest, restAlerted: false };
   $('wLoad').value = ex.load ?? '';
+  active.suggestion = suggestLoad(ex, exerciseEntries(store.history, ex));
   keepAwake(true);
   show('workout');
 }
 
 function finishExercise() {
   const closed = rc.finishSet();
-  if (closed) closed.load = active.exercise.load;
+  if (closed) {
+    closed.load = active.exercise.load;
+    checkRecord(closed);
+  }
   persist();
   active = null;
   keepAwake(false);
@@ -429,6 +490,10 @@ function adjustReps(d) {
   }
   dirty = true;
 }
+$('btnSuggest').onclick = () => {
+  setLoad(active.suggestion.load);
+  active.suggestion = null;
+};
 $('btnLoadPlus').onclick = () => setLoad((active.exercise.load || 0) + 5);
 $('btnLoadMinus').onclick = () => setLoad((active.exercise.load || 0) - 5);
 $('wLoad').onchange = (e) => setLoad(Number(e.target.value));
@@ -453,8 +518,16 @@ function renderWorkout() {
   const resting = rc.state === 'rest' && active.restWallStart !== null;
   const done = rc.sets.length;
   $('wWarn').hidden = sensor.mode === 'on' || sensor.mode === 'sim';
-  $('wInfo').textContent = `${ex.sets} × ${ex.reps} · descanso ${ex.rest} s`;
+  const closedVolume = rc.sets.reduce((sum, s) => sum + s.reps * (s.load ?? ex.load ?? 0), 0);
+  const volume = closedVolume + (rc.state === 'set' ? rc.reps * (ex.load || 0) : 0);
+  $('wInfo').textContent = `${ex.sets} × ${ex.reps} · descanso ${ex.rest} s · volume ${int(volume)} kg`;
   $('wLoadHint').hidden = !ex.suggested;
+  const sug = active.suggestion;
+  $('wSuggest').hidden = !sug || rc.sets.length > 0 || (ex.load || 0) >= sug.load;
+  if (sug) {
+    $('wSuggestText').textContent = `Você fez ${sug.sets} × ${sug.reps} com ${kg(sug.from)} na última vez. Hora de subir.`;
+    $('btnSuggest').textContent = `Usar ${kg(sug.load)}`;
+  }
   $('wCard').classList.toggle('dim', resting);
   $('wReps').textContent = resting ? rc.sets[done - 1].reps : rc.reps;
   $('wTarget').textContent = `/ ${ex.reps}`;
@@ -478,7 +551,7 @@ function renderWorkout() {
     }
   }
   $('wSets').innerHTML = rc.sets
-    .map((s, i) => `<li>${i + 1}ª <b>${s.reps}</b> reps${s.load ? ` × ${kg(s.load)}` : ''}${s.restActual === null ? '' : `<small>descanso ${mmss(s.restActual)}</small>`}</li>`)
+    .map((s, i) => `<li${s.pr ? ' class="pr"' : ''}>${i + 1}ª <b>${s.reps}</b> reps${s.load ? ` × ${kg(s.load)}` : ''}${s.pr ? '<em>★ recorde</em>' : ''}${s.restActual === null ? '' : `<small>descanso ${mmss(s.restActual)}</small>`}</li>`)
     .join('');
 }
 
@@ -499,8 +572,8 @@ function renderHistory() {
             const same = loads.every((l) => l === loads[0]);
             const title = same && loads[0] ? ` · ${kg(loads[0])}` : '';
             const reps = same
-              ? `${e.sets.map((s) => s.reps).join(' · ')} reps`
-              : e.sets.map((s, i) => `${s.reps} × ${loads[i] ? kg(loads[i]) : 'sem carga'}`).join(' · ');
+              ? `${e.sets.map((s) => `${s.reps}${s.pr ? '★' : ''}`).join(' · ')} reps`
+              : e.sets.map((s, i) => `${s.reps} × ${loads[i] ? kg(loads[i]) : 'sem carga'}${s.pr ? '★' : ''}`).join(' · ');
             const rests = e.sets.filter((s) => s.rest !== null).map((s) => mmss(s.rest));
             return `<div class="entry"><b>${esc(e.name)}${title}</b><span>${reps}${rests.length ? ` · descansos ${rests.join(', ')}` : ''}</span></div>`;
           })
@@ -513,6 +586,176 @@ $('btnClearHist').onclick = () => {
   store.history = [];
   save();
   renderHistory();
+};
+
+// ---------- progresso ----------
+const shortDate = (d) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+const longDate = (d) => new Date(d).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+const tons = (v) => (v >= 10000 ? `${num(v / 1000, 1)} t` : `${int(v)} kg`);
+
+function renderProgress() {
+  const h = store.history;
+  const t = totals(h);
+  const weekStart = new Date();
+  weekStart.setHours(0, 0, 0, 0);
+  weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7)); // segunda-feira
+  const week = totals(h.filter((e) => new Date(e.date) >= weekStart));
+  $('pTiles').innerHTML = `
+    <div><b>${t.days}</b><small>dias de treino</small></div>
+    <div><b>${int(t.sets)}</b><small>séries</small></div>
+    <div><b>${tons(t.volume)}</b><small>volume total</small></div>
+    <div><b>${week.sets}</b><small>séries nesta semana</small></div>`;
+  renderHeat();
+  renderMuscles();
+  const sel = $('pEx');
+  const keep = sel.value;
+  const withData = store.exercises.filter((x) => exerciseEntries(h, x).length);
+  const list = withData.length ? withData : store.exercises;
+  sel.innerHTML = list.map((x) => `<option value="${x.id}">${esc(x.name)}</option>`).join('');
+  if (list.some((x) => x.id === keep)) sel.value = keep;
+  renderExerciseProgress();
+}
+
+function renderHeat() {
+  const act = activityByDay(store.history);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const start = new Date(today);
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7) - 52 * 7); // segunda-feira, 52 semanas atrás
+  const cells = [];
+  for (let i = 0; i < 53 * 7; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    const key = dayKey(d);
+    const sets = act.get(key)?.sets || 0;
+    const level = sets === 0 ? 0 : sets <= 4 ? 1 : sets <= 9 ? 2 : sets <= 15 ? 3 : 4;
+    cells.push(`<i class="${d > today ? 'future' : `l${level}`}" data-day="${key}"></i>`);
+  }
+  $('pHeat').innerHTML = cells.join('');
+  $('pHeatScroll').scrollLeft = $('pHeatScroll').scrollWidth;
+  $('pHeat').onclick = (e) => {
+    const cell = e.target.closest('[data-day]');
+    if (!cell) return;
+    $('pHeat').querySelector('.sel')?.classList.remove('sel');
+    cell.classList.add('sel');
+    const day = act.get(cell.dataset.day);
+    const label = longDate(`${cell.dataset.day}T12:00:00`);
+    $('pHeatInfo').textContent = day ? `${label}: ${day.sets} séries, ${int(day.volume)} kg` : `${label}: sem treino`;
+  };
+}
+
+function renderMuscles() {
+  const rows = muscleVolume(store.history, Date.now() - 30 * 864e5, store.exercises);
+  if (!rows.length) {
+    $('pMuscles').innerHTML = '<p class="empty">Nenhum treino nos últimos 30 dias.</p>';
+    return;
+  }
+  const max = rows[0].sets;
+  $('pMuscles').innerHTML = rows
+    .map((m) => `<div class="mrow"><span>${esc(m.muscle)}</span><div class="track"><i style="width:${(m.sets / max) * 100}%"></i></div><small>${m.sets} séries · ${int(m.volume)} kg</small></div>`)
+    .join('');
+}
+
+function renderExerciseProgress() {
+  const ex = store.exercises.find((x) => x.id === $('pEx').value);
+  const entries = ex ? exerciseEntries(store.history, ex) : [];
+  $('pReadout').textContent = '';
+  if (!entries.length) {
+    $('pRecs').innerHTML = '';
+    $('pTable').innerHTML = '';
+    $('pChart').innerHTML = '<p class="empty">Sem registros deste exercício ainda.</p>';
+    return;
+  }
+  const r = records(entries);
+  $('pRecs').innerHTML = `
+    <div><b>${r.maxLoad ? kg(r.maxLoad) : '—'}</b><small>maior carga</small></div>
+    <div><b>${r.bestE1rm ? kg(Math.round(r.bestE1rm)) : '—'}</b><small>1RM estimado</small></div>
+    <div><b>${r.maxReps}</b><small>mais reps</small></div>`;
+  const series = e1rmSeries(entries);
+  $('pChart').innerHTML = series.length >= 2
+    ? lineChart(series)
+    : `<p class="hint">${series.length ? 'O gráfico de 1RM estimado aparece a partir do segundo treino com carga.' : 'Registre a carga para acompanhar o 1RM estimado.'}</p>`;
+  $('pChart').onclick = (e) => {
+    const hit = e.target.closest('[data-i]');
+    if (!hit) return;
+    const p = series[Number(hit.dataset.i)];
+    $('pChart').querySelector('.dot.sel')?.classList.remove('sel');
+    $('pChart').querySelector(`.dot[data-d="${hit.dataset.i}"]`).classList.add('sel');
+    $('pReadout').textContent = `${longDate(p.date)}: 1RM estimado ${kg(Math.round(p.value))} (${p.reps} × ${kg(p.load)})`;
+  };
+  $('pTable').innerHTML = `<table class="mini"><thead><tr><th>Data</th><th>Séries</th><th>Volume</th><th>1RM est.</th></tr></thead><tbody>${[...entries]
+    .reverse()
+    .slice(0, 8)
+    .map((e) => {
+      const best = e1rmSeries([e])[0];
+      const reps = e.sets.map((s) => `${s.reps}${s.pr ? '★' : ''}`).join(' · ');
+      return `<tr><td>${shortDate(e.date)}</td><td>${reps}</td><td>${int(entryVolume(e))} kg</td><td>${best ? kg(Math.round(best.value)) : '—'}</td></tr>`;
+    })
+    .join('')}</tbody></table>`;
+}
+$('pEx').onchange = renderExerciseProgress;
+
+/** Gráfico de linha em SVG: uma série, um eixo, pontos tocáveis. */
+function lineChart(series) {
+  const W = 320;
+  const H = 170;
+  const pad = { l: 36, r: 12, t: 10, b: 22 };
+  const values = series.map((p) => p.value);
+  let lo = Math.min(...values);
+  let hi = Math.max(...values);
+  if (hi - lo < 10) {
+    const mid = (hi + lo) / 2;
+    lo = mid - 5;
+    hi = mid + 5;
+  }
+  const step = [1, 2, 5, 10, 20, 50, 100].find((s) => (hi - lo) / s <= 4) || 200;
+  lo = Math.floor(lo / step) * step;
+  hi = Math.ceil(hi / step) * step;
+  const x = (i) => pad.l + (i / (series.length - 1)) * (W - pad.l - pad.r);
+  const y = (v) => pad.t + (1 - (v - lo) / (hi - lo)) * (H - pad.t - pad.b);
+  let grid = '';
+  for (let v = lo; v <= hi + 0.001; v += step) {
+    grid += `<line class="grid" x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}"/><text x="${pad.l - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`;
+  }
+  const path = series.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
+  const dots = series.map((p, i) => `<circle class="dot" data-d="${i}" cx="${x(i)}" cy="${y(p.value)}" r="4"/>`).join('');
+  const hits = series.map((p, i) => `<circle class="hit" data-i="${i}" cx="${x(i)}" cy="${y(p.value)}" r="16"/>`).join('');
+  const last = series.length - 1;
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="1RM estimado ao longo do tempo, em kg">${grid}
+    <text x="${pad.l}" y="${H - 5}">${shortDate(series[0].date)}</text>
+    <text x="${W - pad.r}" y="${H - 5}" text-anchor="end">${shortDate(series[last].date)}</text>
+    <path class="line" d="${path}"/>${dots}${hits}</svg>`;
+}
+
+// ---------- dados ----------
+function download(name, text, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  $('dataInfo').textContent = `Arquivo ${name} gerado.`;
+}
+$('btnExport').onclick = () => download(`treino-backup-${dayKey(new Date())}.json`, JSON.stringify(store, null, 2), 'application/json');
+$('btnCsv').onclick = () => download(`treinos-${dayKey(new Date())}.csv`, `\ufeff${toCSV(store.history)}`, 'text/csv');
+$('btnImport').onclick = () => $('fileImport').click();
+$('fileImport').onchange = async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const data = validateImport(JSON.parse(await file.text()));
+    const msg = `Substituir os dados deste aparelho pelo backup?\n\nBackup: ${data.exercises.length} exercícios e ${data.history.length} registros.\nAtual: ${store.exercises.length} exercícios e ${store.history.length} registros.\n\nNão dá para desfazer.`;
+    if (!confirm(msg)) return;
+    store.exercises = data.exercises;
+    store.history = data.history;
+    store.settings = { ...store.settings, ...data.settings };
+    store.version = 3;
+    save();
+    location.reload();
+  } catch (err) {
+    $('dataInfo').textContent = `Não foi possível importar: ${err.message}`;
+  }
 };
 
 // ---------- ajustes ----------

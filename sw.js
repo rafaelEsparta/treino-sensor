@@ -1,7 +1,7 @@
 // Service worker: deixa o app abrir sem internet (academia com sinal ruim).
 // Estratégia "rede primeiro": com internet pega sempre a versão nova e
 // atualiza o cache; sem internet usa a última versão guardada.
-const CACHE = 'treino-v2';
+const CACHE = 'treino-v3';
 const SHELL = [
   './',
   'index.html',
@@ -12,6 +12,7 @@ const SHELL = [
   'icons/icon-512.png',
   'src/witmotion.js',
   'src/repcounter.js',
+  'src/stats.js',
   'src/simulator.js',
 ];
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1a1a19">
+  <meta name="theme-color" content="#0c0e12">
   <title>Treino</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
@@ -15,6 +15,7 @@
     <button id="conn" class="chip off">Conectar sensor</button>
   </header>
 
+  <div id="toast" class="toast" role="status" hidden></div>
   <p id="unsupported" class="banner" hidden>Este navegador não tem Bluetooth. Use o Chrome no Android.</p>
 
   <main>
@@ -34,6 +35,7 @@
         <button id="btnLoadPlus" aria-label="Aumentar carga">+5</button>
       </div>
       <p id="wLoadHint" class="hint" hidden>Sugestão para iniciante de 80 kg. Ajuste para a carga que você usar.</p>
+      <p id="wSuggest" class="note" hidden><span id="wSuggestText"></span><button id="btnSuggest" class="primary"></button></p>
       <div id="wCard" class="card">
         <div id="wStatus" class="status">Pronto. Comece a série.</div>
         <div class="count"><span id="wReps">0</span><small id="wTarget"></small></div>
@@ -57,6 +59,29 @@
       <div class="actions">
         <button id="btnEndSet">Encerrar série</button>
         <button id="btnFinish" class="primary">Concluir exercício</button>
+      </div>
+    </section>
+
+    <!-- Progresso -->
+    <section id="progress" class="view" hidden>
+      <div id="pTiles" class="tiles"></div>
+      <h2>Atividade no último ano</h2>
+      <div class="panel">
+        <div class="heat-scroll" id="pHeatScroll"><div id="pHeat" class="heat"></div></div>
+        <div class="heat-foot">
+          <span id="pHeatInfo">Toque em um dia para ver o detalhe.</span>
+          <span class="heat-key">menos <i style="background:var(--heat0)"></i><i style="background:var(--heat1)"></i><i style="background:var(--heat2)"></i><i style="background:var(--heat3)"></i><i style="background:var(--heat4)"></i> mais</span>
+        </div>
+      </div>
+      <h2>Séries por grupo muscular · 30 dias</h2>
+      <div id="pMuscles" class="panel"></div>
+      <h2>Evolução por exercício</h2>
+      <div class="panel">
+        <select id="pEx" aria-label="Exercício"></select>
+        <div id="pRecs" class="recs"></div>
+        <div id="pChart"></div>
+        <p id="pReadout" class="readout"></p>
+        <div id="pTable"></div>
       </div>
     </section>
 
@@ -87,12 +112,21 @@
       <label class="field">Amplitude mínima (m)<input id="oMinRange" type="number" inputmode="decimal" min="0.01" step="0.01"></label>
       <label class="field">Limiar de parado (m/s²)<input id="oStillAcc" type="number" inputmode="decimal" min="0.01" step="0.01"></label>
       <button id="btnDefaults" class="wide">Restaurar padrões de detecção</button>
+      <h2>Dados</h2>
+      <div class="stack">
+        <button id="btnExport">Exportar backup (JSON)</button>
+        <button id="btnCsv">Exportar treinos (CSV)</button>
+        <button id="btnImport">Importar backup (JSON)</button>
+        <input id="fileImport" type="file" accept="application/json,.json" hidden>
+      </div>
+      <p id="dataInfo" class="hint"></p>
       <p class="sub"><a href="lab.html">Abrir o WitMotion Lab</a> (gráficos, protocolo e gravação de CSV)</p>
     </section>
   </main>
 
   <nav id="tabs" class="tabs">
     <button data-view="home" class="on">Exercícios</button>
+    <button data-view="progress">Progresso</button>
     <button data-view="history">Histórico</button>
     <button data-view="settings">Ajustes</button>
   </nav>
@@ -106,6 +140,8 @@
         <label class="field">Carga (kg)<input id="fLoad" type="number" inputmode="decimal" min="0" step="0.5"></label>
         <label class="field">Séries<input id="fSets" type="number" inputmode="numeric" min="1" max="20" required></label>
         <label class="field">Repetições<input id="fReps" type="number" inputmode="numeric" min="1" max="100" required></label>
+        <label class="field">Grupo muscular<select id="fMuscle"></select></label>
+        <label class="field">Aumento de carga (kg)<input id="fStep" type="number" inputmode="decimal" min="0.5" step="0.5" required></label>
       </div>
       <div class="actions">
         <button id="fDelete" type="button" class="danger" hidden>Excluir</button>
