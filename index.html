@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1a19">
+  <title>Treino</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="gym.css">
+</head>
+<body>
+  <header class="top">
+    <h1 id="title">Exercícios</h1>
+    <button id="conn" class="chip off">Conectar sensor</button>
+  </header>
+
+  <p id="unsupported" class="banner" hidden>Este navegador não tem Bluetooth. Use o Chrome no Android.</p>
+
+  <main>
+    <!-- Lista de exercícios -->
+    <section id="home" class="view">
+      <ul id="exList" class="list"></ul>
+      <button id="btnAdd" class="wide">+ Novo exercício</button>
+    </section>
+
+    <!-- Treino em andamento -->
+    <section id="workout" class="view" hidden>
+      <p id="wWarn" class="banner" hidden>Sensor desconectado. Toque em "Conectar sensor" acima.</p>
+      <p id="wInfo" class="sub"></p>
+      <div class="load">
+        <button id="btnLoadMinus" aria-label="Diminuir carga">−5</button>
+        <label>Carga (kg)<input id="wLoad" type="number" inputmode="decimal" min="0" step="0.5" placeholder="—"></label>
+        <button id="btnLoadPlus" aria-label="Aumentar carga">+5</button>
+      </div>
+      <p id="wLoadHint" class="hint" hidden>Sugestão para iniciante de 80 kg. Ajuste para a carga que você usar.</p>
+      <div id="wCard" class="card">
+        <div id="wStatus" class="status">Pronto. Comece a série.</div>
+        <div class="count"><span id="wReps">0</span><small id="wTarget"></small></div>
+        <div class="adjust">
+          <button id="btnMinus" aria-label="Tirar uma repetição">−1</button>
+          <span id="wSet">Série 1</span>
+          <button id="btnPlus" aria-label="Somar uma repetição">+1</button>
+        </div>
+      </div>
+      <div id="restCard" class="card rest" hidden>
+        <div id="restLabel" class="status">Descanso</div>
+        <div id="restTime" class="timer">1:00</div>
+        <div class="bar"><i id="restBar"></i></div>
+        <div class="adjust">
+          <button id="btnRestMinus">−15 s</button>
+          <span id="restTarget"></span>
+          <button id="btnRestPlus">+15 s</button>
+        </div>
+      </div>
+      <ol id="wSets" class="sets"></ol>
+      <div class="actions">
+        <button id="btnEndSet">Encerrar série</button>
+        <button id="btnFinish" class="primary">Concluir exercício</button>
+      </div>
+    </section>
+
+    <!-- Histórico -->
+    <section id="history" class="view" hidden>
+      <div id="histList"></div>
+      <button id="btnClearHist" class="wide danger" hidden>Apagar histórico</button>
+    </section>
+
+    <!-- Ajustes -->
+    <section id="settings" class="view" hidden>
+      <h2>Sensor</h2>
+      <dl class="info">
+        <dt>Estado</dt><dd id="sState">Desconectado</dd>
+        <dt>Bateria</dt><dd id="sBattery">—</dd>
+        <dt>Taxa medida</dt><dd id="sRate">—</dd>
+      </dl>
+      <div class="actions">
+        <button id="btnDisconnect" disabled>Desconectar</button>
+        <button id="btnDemo">Modo demonstração</button>
+      </div>
+      <h2>Avisos</h2>
+      <label class="toggle"><input id="oSound" type="checkbox"> Som</label>
+      <label class="toggle"><input id="oVibrate" type="checkbox"> Vibração</label>
+      <h2>Detecção</h2>
+      <label class="field">Sem movimento para encerrar a série (s)<input id="oRestDetect" type="number" inputmode="decimal" min="1" step="0.5"></label>
+      <label class="field">Velocidade mínima (m/s)<input id="oVelOn" type="number" inputmode="decimal" min="0.01" step="0.01"></label>
+      <label class="field">Amplitude mínima (m)<input id="oMinRange" type="number" inputmode="decimal" min="0.01" step="0.01"></label>
+      <label class="field">Limiar de parado (m/s²)<input id="oStillAcc" type="number" inputmode="decimal" min="0.01" step="0.01"></label>
+      <button id="btnDefaults" class="wide">Restaurar padrões de detecção</button>
+      <p class="sub"><a href="lab.html">Abrir o WitMotion Lab</a> (gráficos, protocolo e gravação de CSV)</p>
+    </section>
+  </main>
+
+  <nav id="tabs" class="tabs">
+    <button data-view="home" class="on">Exercícios</button>
+    <button data-view="history">Histórico</button>
+    <button data-view="settings">Ajustes</button>
+  </nav>
+
+  <dialog id="dlg">
+    <form method="dialog" id="exForm">
+      <h2 id="dlgTitle">Novo exercício</h2>
+      <label class="field">Nome<input id="fName" type="text" required maxlength="40" autocomplete="off"></label>
+      <div class="grid2">
+        <label class="field">Descanso (s)<input id="fRest" type="number" inputmode="numeric" min="5" max="900" step="5" required></label>
+        <label class="field">Carga (kg)<input id="fLoad" type="number" inputmode="decimal" min="0" step="0.5"></label>
+        <label class="field">Séries<input id="fSets" type="number" inputmode="numeric" min="1" max="20" required></label>
+        <label class="field">Repetições<input id="fReps" type="number" inputmode="numeric" min="1" max="100" required></label>
+      </div>
+      <div class="actions">
+        <button id="fDelete" type="button" class="danger" hidden>Excluir</button>
+        <button type="button" id="fCancel">Cancelar</button>
+        <button type="submit" class="primary">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="gym.js"></script>
+</body>
+</html>

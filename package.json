@@ -1,0 +1,11 @@
+{
+  "name": "witmotion-lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Laboratório do sensor WitMotion WT901BLE67: leitura BLE, contagem de repetições e descanso",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  }
+}

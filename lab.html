@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WitMotion Lab</title>
+  <link rel="stylesheet" href="lab.css">
+</head>
+<body>
+  <header>
+    <h1>WitMotion Lab <span>WT901BLE67</span> <a href="./" style="font-size:13px;font-weight:400;margin-left:8px">abrir app de treino</a></h1>
+    <div class="conn">
+      <span id="status" class="status off">Desconectado</span>
+      <button id="btnConnect" class="primary">Conectar sensor</button>
+      <button id="btnSim" title="Gera dados sintéticos de uma pilha de pesos, sem o sensor">Simulador</button>
+    </div>
+  </header>
+  <p id="unsupported" class="warn" hidden>Este navegador não tem Web Bluetooth. Abra esta página no Chrome ou no Edge.</p>
+
+  <section class="stats">
+    <div><small>Dispositivo</small><b id="devName">—</b></div>
+    <div><small>Taxa medida</small><b id="rate">—</b></div>
+    <div><small>Quadros</small><b id="frames">0</b></div>
+    <div><small>Bateria</small><b id="battery">—</b></div>
+    <div><small>Temperatura</small><b id="temp">—</b></div>
+    <div><small>Bytes descartados</small><b id="discarded">0</b></div>
+  </section>
+
+  <main>
+    <section class="panel workout">
+      <h2>Treino</h2>
+      <div id="wState" class="wstate">Aguardando a primeira repetição</div>
+      <div class="big">
+        <div><span id="reps">0</span><small>repetições</small></div>
+        <div><span id="setNo">–</span><small>série</small></div>
+        <div id="restBox"><span id="rest">–</span><small id="restLabel">descanso</small></div>
+      </div>
+      <div class="live">
+        <span>Fase <b id="phase">parado</b></span>
+        <span>Acel. vertical <b id="aVert">0,00</b> m/s²</span>
+        <span>Vel. vertical <b id="vVert">0,00</b> m/s</span>
+      </div>
+      <h3>Séries</h3>
+      <table id="sets">
+        <thead><tr><th>Série</th><th>Reps</th><th>Duração</th><th>Amplitude média</th><th>Subida / descida</th><th>Descanso real</th></tr></thead>
+        <tbody><tr class="empty"><td colspan="6">Nenhuma série concluída</td></tr></tbody>
+      </table>
+      <h3>Ajustes</h3>
+      <div class="params">
+        <label>Descanso predefinido (s)<input id="pRest" type="number" min="5" step="5"></label>
+        <label>Sem movimento para encerrar a série (s)<input id="pRestDetect" type="number" min="1" step="0.5"></label>
+        <label>Velocidade mínima (m/s)<input id="pVelOn" type="number" min="0.01" step="0.01"></label>
+        <label>Amplitude mínima (m)<input id="pMinRange" type="number" min="0.01" step="0.01"></label>
+        <label>Limiar de parado (m/s²)<input id="pStillAcc" type="number" min="0.01" step="0.01"></label>
+        <label class="check"><input id="pSound" type="checkbox" checked> Som ao contar e ao fim do descanso</label>
+      </div>
+      <div class="row">
+        <button id="btnReset">Zerar treino e recalibrar</button>
+      </div>
+    </section>
+
+    <section class="charts">
+      <div class="panel">
+        <h2>Velocidade vertical estimada <small>m/s, positivo = subindo</small></h2>
+        <div class="chart" id="cVel"><canvas></canvas><div class="tip" hidden></div></div>
+      </div>
+      <div class="panel">
+        <h2>Aceleração <small>g</small></h2>
+        <div class="legend"><span><i class="s1"></i>X</span><span><i class="s2"></i>Y</span><span><i class="s3"></i>Z</span></div>
+        <div class="chart" id="cAcc"><canvas></canvas><div class="tip" hidden></div></div>
+      </div>
+      <div class="panel">
+        <h2>Giroscópio <small>°/s</small></h2>
+        <div class="legend"><span><i class="s1"></i>X</span><span><i class="s2"></i>Y</span><span><i class="s3"></i>Z</span></div>
+        <div class="chart" id="cGyro"><canvas></canvas><div class="tip" hidden></div></div>
+      </div>
+      <div class="panel">
+        <h2>Ângulos <small>°</small></h2>
+        <div class="legend"><span><i class="s1"></i>Roll</span><span><i class="s2"></i>Pitch</span><span><i class="s3"></i>Yaw</span></div>
+        <div class="chart" id="cAng"><canvas></canvas><div class="tip" hidden></div></div>
+      </div>
+    </section>
+  </main>
+
+  <section class="bottom">
+    <div class="panel">
+      <h2>Comandos</h2>
+      <div class="row">
+        <label>Taxa de saída
+          <select id="rateSel">
+            <option value="10">10 Hz (padrão de fábrica)</option>
+            <option value="20">20 Hz</option>
+            <option value="50" selected>50 Hz (recomendado)</option>
+            <option value="100">100 Hz</option>
+            <option value="200">200 Hz</option>
+          </select>
+        </label>
+        <button id="btnRate" data-ble>Aplicar e salvar</button>
+      </div>
+      <div class="row">
+        <button data-ble data-reg="0x64">Ler bateria</button>
+        <button data-ble data-reg="0x40">Ler temperatura</button>
+        <button data-ble data-reg="0x3A">Ler magnetômetro</button>
+        <button data-ble data-reg="0x51">Ler quatérnio</button>
+        <button data-ble data-reg="0x2E">Ler versão</button>
+      </div>
+      <div class="row">
+        <button id="btnCalib" data-ble>Calibrar acelerômetro</button>
+      </div>
+      <div class="row">
+        <label class="grow">Comando em hex<input id="hexIn" type="text" placeholder="FF AA 27 64 00" spellcheck="false"></label>
+        <button id="btnHex" data-ble>Enviar</button>
+      </div>
+      <h3>Gravação</h3>
+      <div class="row">
+        <button id="btnRec">Gravar CSV</button>
+        <span id="recInfo" class="muted">Grava todas as amostras para análise e ajuste do detector.</span>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Registro do protocolo</h2>
+      <div class="row">
+        <label class="check"><input id="logData" type="checkbox"> Mostrar quadros de dados (1 a cada 10)</label>
+        <button id="btnClearLog">Limpar</button>
+      </div>
+      <pre id="log" aria-live="off"></pre>
+    </div>
+  </section>
+
+  <script type="module" src="lab.js"></script>
+</body>
+</html>
