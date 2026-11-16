@@ -15,6 +15,9 @@ const TYPES = {
   '.json': 'application/json; charset=utf-8',
   '.csv': 'text/csv; charset=utf-8',
   '.png': 'image/png',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.wasm': 'application/wasm',
+  '.task': 'application/octet-stream',
   '.webmanifest': 'application/manifest+json; charset=utf-8',
 };
 

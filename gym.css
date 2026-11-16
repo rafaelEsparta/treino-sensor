@@ -322,3 +322,41 @@ dialog h2 { margin: 8px 0 14px; text-transform: none; letter-spacing: -0.02em; f
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- treino livre (câmera) ---------- */
+.freecard {
+  width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; margin-top: 12px; padding: 14px;
+  border-radius: var(--r-lg); background: var(--accent-bg); border-color: var(--accent-line);
+}
+.freecard .avatar { background: var(--accent); color: var(--on-accent); }
+.freecard .avatar svg { width: 24px; height: 24px; }
+.freecard .body { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.freecard .body b { font-size: 17px; }
+.freecard .body small { color: var(--text2); font-weight: 400; font-size: 13px; }
+.free .banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.free .banner span { flex: 1; min-width: 180px; }
+.free .banner button { min-height: 38px; padding: 6px 12px; font-size: 14px; }
+.exname {
+  width: 100%; display: flex; flex-direction: column; align-items: center; gap: 0; padding: 10px 14px;
+  background: none; border-color: transparent; text-align: center;
+}
+.exname b { font-size: clamp(26px, 8vw, 40px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
+.exname small { color: var(--muted); font-weight: 500; font-size: 13px; }
+/* número legível a 2-3 m: o anel ocupa quase toda a largura */
+.free .hero { width: min(88vw, 52vh, 440px); margin-top: 0; }
+.free .big { font-size: min(44vw, 26vh, 220px); }
+.free .hero.rest .big { font-size: min(25vw, 15vh, 124px); }
+.free .status { font-size: clamp(13px, 4vw, 18px); }
+.free .subline { font-size: clamp(15px, 4.5vw, 20px); }
+.cam {
+  position: absolute; right: -4px; bottom: -4px; width: 26%; aspect-ratio: 3 / 4; border-radius: 14px; overflow: hidden;
+  background: #000; border: 2px solid var(--accent-line); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+.cam.bad { border-color: var(--critical); }
+.cam video, .cam canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.cam.demo video { display: none; }
+.cam.demo canvas { transform: none; object-fit: contain; }
+.picklist { display: grid; gap: 8px; margin-bottom: 12px; max-height: 60dvh; overflow-y: auto; }
+.picklist button { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; text-align: left; background: var(--surface2); }
+.picklist button small { color: var(--muted); font-weight: 500; }
+.picklist button.on { border-color: var(--accent); color: var(--accent); }

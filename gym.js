@@ -3,6 +3,7 @@
 import { Commands, FrameParser, UUID, interpretRegister } from './src/witmotion.js';
 import { DEFAULTS, RepCounter } from './src/repcounter.js';
 import { simulate, workoutScript } from './src/simulator.js';
+import { initFree } from './free.js';
 import {
   MUSCLES, activityByDay, dayKey, e1rm, e1rmSeries, entryVolume, exerciseEntries, muscleVolume, records, suggestLoad, toCSV, totals, validateImport,
 } from './src/stats.js';
@@ -144,7 +145,9 @@ function vibrate(pattern) {
   if (store.settings.vibrate && navigator.vibrate) navigator.vibrate(pattern);
 }
 
+let wantAwake = false;
 async function keepAwake(on) {
+  wantAwake = on;
   try {
     if (on && !wakeLock && 'wakeLock' in navigator && document.visibilityState === 'visible') {
       wakeLock = await navigator.wakeLock.request('screen');
@@ -156,7 +159,7 @@ async function keepAwake(on) {
     /* sem permissão para manter a tela ligada */
   }
 }
-document.addEventListener('visibilitychange', () => keepAwake(Boolean(active)));
+document.addEventListener('visibilitychange', () => keepAwake(wantAwake));
 
 // ---------- amostras e eventos do detector ----------
 function onSample(s, dt) {
@@ -361,16 +364,19 @@ function toggleDemo() {
 }
 
 // ---------- navegação ----------
-const TITLES = { home: 'Treinar', progress: 'Progresso', history: 'Histórico', settings: 'Ajustes' };
+const TITLES = { home: 'Treinar', free: 'Treino livre', progress: 'Progresso', history: 'Histórico', settings: 'Ajustes' };
 function show(next) {
   view = next;
-  for (const v of ['home', 'workout', 'progress', 'history', 'settings']) $(v).hidden = v !== next;
-  $('tabs').hidden = next === 'workout';
-  $('btnBack').hidden = next !== 'workout';
+  for (const v of ['home', 'workout', 'free', 'progress', 'history', 'settings']) $(v).hidden = v !== next;
+  const focused = next === 'workout' || next === 'free';
+  $('tabs').hidden = focused;
+  $('btnBack').hidden = !focused;
+  $('conn').hidden = next === 'free'; // o treino livre não usa o sensor
   $('btnAdd').hidden = next !== 'home';
   $('title').textContent = next === 'workout' ? active.exercise.name : TITLES[next];
   $('subtitle').textContent =
     next === 'workout' ? active.exercise.muscle || ''
+    : next === 'free' ? 'câmera · halteres e peso do corpo'
     : next === 'home' ? new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
     : '';
   for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.view === next);
@@ -429,13 +435,14 @@ function renderWeek() {
 
 function renderExercises() {
   renderWeek();
-  const used = MUSCLES.filter((m) => store.exercises.some((x) => (x.muscle || 'Outro') === m));
+  const sensor = store.exercises.filter((x) => !x.pose); // os do treino livre ficam fora desta lista
+  const used = MUSCLES.filter((m) => sensor.some((x) => (x.muscle || 'Outro') === m));
   if (!used.includes(muscleFilter)) muscleFilter = 'Todos';
   $('filters').hidden = used.length < 2;
   $('filters').innerHTML = ['Todos', ...used]
     .map((m) => `<button role="tab" aria-selected="${m === muscleFilter}" class="${m === muscleFilter ? 'on' : ''}" data-muscle="${m}">${m}</button>`)
     .join('');
-  const list = store.exercises.filter((x) => muscleFilter === 'Todos' || (x.muscle || 'Outro') === muscleFilter);
+  const list = sensor.filter((x) => muscleFilter === 'Todos' || (x.muscle || 'Outro') === muscleFilter);
   $('exList').innerHTML = list.length
     ? list
         .map((ex) => {
@@ -569,7 +576,7 @@ $('btnEndSet').onclick = () => {
   if (rc.finishSet()) startRest(0);
 };
 $('btnFinish').onclick = finishExercise;
-$('btnBack').onclick = finishExercise;
+$('btnBack').onclick = () => (free.open ? free.finish() : finishExercise());
 $('btnRestPlus').onclick = () => {
   active.restTarget += 15;
   active.restAlerted = false;
@@ -912,9 +919,12 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+const free = initFree({ store, save, beep, vibrate, toast, keepAwake, show, kg, mmss, int, uid, esc, DEFAULT_REST });
+$('btnFree').onclick = () => free.start();
+
 if (!navigator.bluetooth) {
-  $('unsupported').hidden = false;
   $('conn').disabled = true;
+  $('connText').textContent = 'Sem Bluetooth';
 }
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 fillSettings();

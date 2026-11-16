@@ -25,7 +25,6 @@
   </header>
 
   <div id="toast" class="toast" role="status" hidden></div>
-  <p id="unsupported" class="banner" hidden>Este navegador não tem Bluetooth. Use o Chrome no Android.</p>
 
   <main>
     <!-- Início: resumo da semana e exercícios -->
@@ -37,6 +36,10 @@
         </div>
         <div id="weekStats" class="week-stats"></div>
       </div>
+      <button id="btnFree" class="freecard">
+        <span class="avatar" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span>
+        <span class="body"><b>Treino livre</b><small>A câmera identifica o exercício e conta sozinha. Halteres e peso do corpo.</small></span>
+      </button>
       <div id="filters" class="filters" role="tablist" aria-label="Filtrar por grupo muscular"></div>
       <ul id="exList" class="list"></ul>
     </section>
@@ -91,6 +94,62 @@
       <div class="dock">
         <button id="btnEndSet">Encerrar série</button>
         <button id="btnFinish" class="primary">Concluir</button>
+      </div>
+    </section>
+
+    <!-- Treino livre (câmera) -->
+    <section id="free" class="view free" hidden>
+      <p id="fWarn" class="banner" hidden><span id="fWarnText"></span>
+        <button id="fRetry" hidden>Tentar de novo</button>
+        <button id="fDemo" hidden>Ver demonstração</button>
+      </p>
+      <button id="fExercise" class="exname">
+        <b id="fExName">Aguardando movimento</b>
+        <small id="fExHint"></small>
+      </button>
+
+      <div id="fHero" class="hero">
+        <svg class="ring" viewBox="0 0 240 240" aria-hidden="true">
+          <circle class="track" cx="120" cy="120" r="104"/>
+          <circle id="fRingArc" class="arc" cx="120" cy="120" r="104" transform="rotate(-90 120 120)"/>
+        </svg>
+        <div class="center">
+          <div id="fStatus" class="status"></div>
+          <div id="fBig" class="big">0</div>
+          <div id="fSub" class="subline"></div>
+        </div>
+        <div id="fCam" class="cam" aria-hidden="true">
+          <video id="fVideo" playsinline muted></video>
+          <canvas id="fCanvas" width="640" height="480"></canvas>
+        </div>
+      </div>
+
+      <div id="fRepCtl" class="ctl">
+        <button id="fMinus">−1 rep</button>
+        <button id="fPlus">+1 rep</button>
+      </div>
+      <div id="fRestCtl" class="ctl" hidden>
+        <button id="fRestMinus">−15 s</button>
+        <span id="fRestTarget"></span>
+        <button id="fRestPlus">+15 s</button>
+      </div>
+
+      <div class="loadcard">
+        <button id="fLoadMinus" aria-label="Diminuir carga em 2 kg">−2</button>
+        <label>
+          <span>Carga por halter</span>
+          <span class="loadval"><input id="fLoad" type="number" inputmode="decimal" min="0" step="0.5" placeholder="—"><i>kg</i></span>
+        </label>
+        <button id="fLoadPlus" aria-label="Aumentar carga em 2 kg">+2</button>
+      </div>
+      <p class="hint">A câmera não enxerga o peso: digite a carga. O app lembra a última de cada exercício.</p>
+
+      <ol id="fSets" class="log"></ol>
+      <p id="fTotals" class="hint"></p>
+
+      <div class="dock">
+        <button id="fEndSet">Encerrar série</button>
+        <button id="fFinish" class="primary">Concluir</button>
       </div>
     </section>
 
@@ -158,7 +217,7 @@
         <input id="fileImport" type="file" accept="application/json,.json" hidden>
         <p id="dataInfo" class="hint"></p>
       </div>
-      <p class="sub foot"><a href="lab.html">Abrir o WitMotion Lab</a> para gráficos, protocolo e gravação de CSV.</p>
+      <p class="sub foot"><a href="lab.html">WitMotion Lab</a> (sensor) · <a href="camlab.html">Lab da câmera</a> (pose)</p>
     </section>
   </main>
 
@@ -206,6 +265,13 @@
         <button type="submit" class="primary">Salvar</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="fPick">
+    <div class="grabber" aria-hidden="true"></div>
+    <h2>Qual é o exercício?</h2>
+    <div id="fPickList" class="picklist"></div>
+    <div class="actions"><button id="fPickClose" type="button">Cancelar</button></div>
   </dialog>
 
   <script type="module" src="gym.js"></script>

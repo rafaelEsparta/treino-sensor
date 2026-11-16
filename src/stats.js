@@ -158,6 +158,7 @@ export function validateImport(data) {
       step: Math.max(0.5, num(x.step, 5)),
       muscle: MUSCLES.includes(x.muscle) ? x.muscle : 'Outro',
       suggested: Boolean(x.suggested),
+      ...(typeof x.pose === 'string' ? { pose: x.pose } : {}), // exercício do treino livre
     }));
   const history = data.history
     .filter((e) => e && typeof e.name === 'string' && Array.isArray(e.sets) && !Number.isNaN(new Date(e.date).getTime()))
