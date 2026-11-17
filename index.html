@@ -156,6 +156,15 @@
     <!-- Progresso -->
     <section id="progress" class="view" hidden>
       <div id="pTiles" class="tiles"></div>
+      <h2>Evolução por exercício</h2>
+      <div class="panel">
+        <select id="pEx" aria-label="Exercício"></select>
+        <p id="pNext" class="note next" hidden><span id="pNextText"></span></p>
+        <div id="pRecs" class="recs"></div>
+        <div id="pChart"></div>
+        <p id="pReadout" class="readout"></p>
+        <div id="pTable"></div>
+      </div>
       <h2>Atividade no último ano</h2>
       <div class="panel">
         <div class="heat-scroll" id="pHeatScroll"><div id="pHeat" class="heat"></div></div>
@@ -166,14 +175,6 @@
       </div>
       <h2>Séries por grupo muscular · 30 dias</h2>
       <div id="pMuscles" class="panel"></div>
-      <h2>Evolução por exercício</h2>
-      <div class="panel">
-        <select id="pEx" aria-label="Exercício"></select>
-        <div id="pRecs" class="recs"></div>
-        <div id="pChart"></div>
-        <p id="pReadout" class="readout"></p>
-        <div id="pTable"></div>
-      </div>
     </section>
 
     <!-- Histórico -->
@@ -218,6 +219,7 @@
         <p id="dataInfo" class="hint"></p>
       </div>
       <p class="sub foot"><a href="lab.html">WitMotion Lab</a> (sensor) · <a href="camlab.html">Lab da câmera</a> (pose)</p>
+      <p class="sub foot"><a id="demoLink" href="demo/">Ver a demonstração com dados fictícios</a></p>
     </section>
   </main>
 

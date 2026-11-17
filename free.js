@@ -13,7 +13,7 @@ const RING = 2 * Math.PI * 104;
  *   toast, keepAwake, show, kg, mmss, int, uid, esc, DEFAULT_REST
  */
 export function initFree(api) {
-  const { store, save, beep, vibrate, toast, keepAwake, show, kg, mmss, int, uid, esc, DEFAULT_REST } = api;
+  const { store, save, beep, vibrate, toast, keepAwake, show, kg, mmss, int, uid, esc, DEFAULT_REST, demo = false } = api;
   const smoother = new FeatureSmoother();
   const pc = new PoseRepCounter();
   let camera = null;
@@ -201,7 +201,13 @@ export function initFree(api) {
     beep(1, 1); // destrava o áudio com o toque do usuário
     keepAwake(true);
     show('free');
-    startCamera();
+    if (demo) {
+      // página de demonstração: boneco sintético no lugar da câmera
+      import('./src/posecam.js').then((m) => (camModule = m)).catch(() => {});
+      startDemo();
+    } else {
+      startCamera();
+    }
     requestAnimationFrame(render);
   }
 

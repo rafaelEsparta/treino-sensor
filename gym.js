@@ -4,6 +4,8 @@ import { Commands, FrameParser, UUID, interpretRegister } from './src/witmotion.
 import { DEFAULTS, RepCounter } from './src/repcounter.js';
 import { simulate, workoutScript } from './src/simulator.js';
 import { initFree } from './free.js';
+import { DEFAULT_EXERCISES, DEFAULT_REST, DEFAULT_STEP, newDefault as makeDefault } from './src/defaults.js';
+import { buildDemoStore } from './src/demodata.js';
 import {
   MUSCLES, activityByDay, dayKey, e1rm, e1rmSeries, entryVolume, exerciseEntries, muscleVolume, records, suggestLoad, toCSV, totals, validateImport,
 } from './src/stats.js';
@@ -17,38 +19,25 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 // ---------- dados salvos no aparelho ----------
 const KEY = 'treino-v1';
 const DETECTION = ['restDetect', 'velOn', 'minRange', 'stillAcc'];
-const DEFAULT_REST = 90;
-// Exercícios padrão: [nome, carga sugerida em kg para iniciante de 80 kg].
-// São pontos de partida conservadores; a numeração varia entre máquinas.
-const DEFAULT_EXERCISES = [
-  ['Agachamento livre', 40, 'Quadríceps'], // barra de 20 kg + 10 kg de cada lado
-  ['Leg press 45', 80, 'Quadríceps'],
-  ['Leg press horizontal', 60, 'Quadríceps'],
-  ['Cadeira extensora', 30, 'Quadríceps'],
-  ['Cadeira abdutora', 30, 'Glúteos'],
-  ['Cadeira adutora', 30, 'Adutores'],
-  ['Stiff', 30, 'Posteriores'],
-  ['Mesa flexora', 20, 'Posteriores'],
-  ['Cadeira flexora', 25, 'Posteriores'],
-  ['Puxada alta', 30, 'Costas'],
-  ['Remada baixa', 30, 'Costas'],
-];
-const DEFAULT_STEP = 5;
-const newDefault = ([name, load, muscle]) => ({ id: uid(), name, rest: DEFAULT_REST, sets: 3, reps: 12, load, step: DEFAULT_STEP, muscle, suggested: true });
+// Página /demo: mesmos arquivos, dados fictícios gerados na hora e nada gravado no aparelho.
+const DEMO = /\/demo(\/|\/index\.html)?$/.test(location.pathname);
+const newDefault = (def) => makeDefault(def, uid());
 const defaultStore = () => ({
-  version: 3,
+  version: 4,
   exercises: DEFAULT_EXERCISES.map(newDefault),
   history: [],
   settings: { sound: true, vibrate: true, ...Object.fromEntries(DETECTION.map((k) => [k, DEFAULTS[k]])) },
 });
 function loadStore() {
   const base = defaultStore();
+  if (DEMO) return { ...base, ...buildDemoStore(Date.now()) };
   try {
     const saved = JSON.parse(localStorage.getItem(KEY));
     if (saved && Array.isArray(saved.exercises)) {
       const merged = { ...base, ...saved, settings: { ...base.settings, ...saved.settings } };
       if (!(saved.version >= 2)) migrateToV2(merged);
       if (!(saved.version >= 3)) migrateToV3(merged);
+      if (!(saved.version >= 4)) migrateToV4(merged);
       return merged;
     }
   } catch {
@@ -87,8 +76,16 @@ function migrateToV3(s) {
   }
   s.version = 3;
 }
+/** Versão 4: lista de exercícios padrão ampliada (peito, ombros, braços, panturrilha, abdômen). */
+function migrateToV4(s) {
+  for (const def of DEFAULT_EXERCISES) {
+    if (!s.exercises.some((x) => x.name === def[0])) s.exercises.push(newDefault(def));
+  }
+  s.version = 4;
+}
 const store = loadStore();
 function save() {
+  if (DEMO) return; // a demonstração não grava nada no aparelho
   try {
     localStorage.setItem(KEY, JSON.stringify(store));
   } catch {
@@ -523,6 +520,7 @@ $('exForm').onsubmit = () => {
 // ---------- treino ----------
 function startExercise(ex) {
   beep(1, 1); // destrava o áudio com o toque do usuário
+  if (DEMO && sensor.mode === 'off') toggleDemo(); // na demonstração o "sensor" é simulado
   rc.reset();
   applyDetection();
   rc.cfg.restTarget = ex.rest;
@@ -773,6 +771,7 @@ function renderExerciseProgress() {
   const entries = ex ? exerciseEntries(store.history, ex) : [];
   $('pReadout').textContent = '';
   if (!entries.length) {
+    $('pNext').hidden = true;
     $('pRecs').innerHTML = '';
     $('pTable').innerHTML = '';
     $('pChart').innerHTML = '<p class="empty">Sem registros deste exercício ainda.</p>';
@@ -783,6 +782,12 @@ function renderExerciseProgress() {
     <div><b>${r.maxLoad ? kg(r.maxLoad) : '—'}</b><small>maior carga</small></div>
     <div><b>${r.bestE1rm ? kg(Math.round(r.bestE1rm)) : '—'}</b><small>1RM estimado</small></div>
     <div><b>${r.maxReps}</b><small>mais reps</small></div>`;
+  const up = suggestLoad(ex, entries);
+  $('pNext').hidden = !ex.load;
+  $('pNext').classList.toggle('up', Boolean(up));
+  $('pNextText').innerHTML = up
+    ? `<b>Próxima carga sugerida: ${kg(up.load)}</b><br>Você fez ${up.sets} × ${up.reps} com ${kg(up.from)} na última vez.`
+    : `<b>Carga atual: ${ex.load ? kg(ex.load) : '—'}</b><br>Sobe para ${kg((ex.load || 0) + (ex.step || DEFAULT_STEP))} quando fechar ${ex.sets} × ${ex.reps}.`;
   const series = e1rmSeries(entries);
   $('pChart').innerHTML = series.length >= 2
     ? lineChart(series)
@@ -862,7 +867,7 @@ $('fileImport').onchange = async (e) => {
     store.exercises = data.exercises;
     store.history = data.history;
     store.settings = { ...store.settings, ...data.settings };
-    store.version = 3;
+    store.version = 4;
     save();
     location.reload();
   } catch (err) {
@@ -919,15 +924,34 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
-const free = initFree({ store, save, beep, vibrate, toast, keepAwake, show, kg, mmss, int, uid, esc, DEFAULT_REST });
+const free = initFree({ store, save, beep, vibrate, toast, keepAwake, show, kg, mmss, int, uid, esc, DEFAULT_REST, demo: DEMO });
 $('btnFree').onclick = () => free.start();
 
 if (!navigator.bluetooth) {
   $('conn').disabled = true;
   $('connText').textContent = 'Sem Bluetooth';
 }
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && !DEMO) navigator.serviceWorker.register('sw.js').catch(() => {});
 fillSettings();
 setMode('off');
-show('home');
+if (DEMO) {
+  // Faixa fixa avisando que os dados são fictícios, com a saída para o app real.
+  document.body.classList.add('is-demo');
+  const bar = document.createElement('a');
+  bar.className = 'demobar';
+  bar.href = './';
+  bar.innerHTML = '<b>Demonstração</b> · dados fictícios · <u>sair</u>';
+  bar.title = 'Nada do que você fizer aqui é gravado. Toque para ir ao app de verdade.';
+  document.querySelector('.top').after(bar);
+  $('demoLink').hidden = true;
+  // Abre direto no gráfico de progressão de um exercício com sugestão pronta.
+  show('progress');
+  const leg = store.exercises.find((x) => x.name === 'Leg press 45');
+  if (leg) {
+    $('pEx').value = leg.id;
+    renderExerciseProgress();
+  }
+} else {
+  show('home');
+}
 requestAnimationFrame(frame);

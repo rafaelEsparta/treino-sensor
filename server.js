@@ -24,7 +24,12 @@ const TYPES = {
 createServer(async (req, res) => {
   try {
     let path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-    if (path === '/') path = '/index.html';
+    if (path === '/demo') {
+      res.writeHead(301, { Location: '/demo/' });
+      res.end();
+      return;
+    }
+    if (path.endsWith('/')) path += 'index.html';
     const file = normalize(join(ROOT, path));
     if (!file.startsWith(ROOT) || file.slice(ROOT.length).split(sep).some((p) => p.startsWith('.'))) {
       throw new Error('fora da raiz');

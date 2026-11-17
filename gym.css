@@ -360,3 +360,15 @@ dialog h2 { margin: 8px 0 14px; text-transform: none; letter-spacing: -0.02em; f
 .picklist button { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; text-align: left; background: var(--surface2); }
 .picklist button small { color: var(--muted); font-weight: 500; }
 .picklist button.on { border-color: var(--accent); color: var(--accent); }
+
+/* ---------- demonstração ---------- */
+.demobar {
+  display: block; margin: 0 16px 8px; padding: 8px 12px; border-radius: 12px; text-align: center;
+  background: var(--accent-bg); border: 1px solid var(--accent-line); color: var(--text2); font-size: 13px; text-decoration: none;
+}
+.demobar b { color: var(--accent); }
+.demobar u { color: var(--text); text-underline-offset: 2px; }
+.note.next { display: block; margin-bottom: 14px; background: var(--surface2); border-color: var(--line); font-size: 14px; color: var(--text2); }
+.note.next b { color: var(--text); font-size: 16px; }
+.note.next.up { background: var(--accent-bg); border-color: var(--accent-line); }
+.note.next.up b { color: var(--accent); }
