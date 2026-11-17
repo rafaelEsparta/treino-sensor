@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  activityByDay, dayKey, e1rm, e1rmSeries, exerciseEntries, muscleVolume, records, suggestLoad, toCSV, totals, validateImport,
+  activityByDay, dayKey, e1rm, e1rmSeries, exerciseEntries, muscleVolume, recomputeRecords, records, suggestLoad, toCSV, totals, validateImport,
 } from '../src/stats.js';
 
 const ex = { id: 'a', name: 'Leg press 45', sets: 3, reps: 12, load: 80, step: 5, muscle: 'Quadríceps' };
@@ -76,4 +76,19 @@ test('importação valida e limpa', () => {
   assert.equal(out.history.length, 1);
   assert.deepEqual(out.history[0].sets.map((x) => [x.reps, x.load]), [[10, 30]]);
   assert.equal(out.settings.sound, false);
+});
+
+test('recordes recalculados depois de corrigir o histórico', () => {
+  const a = entry('2026-11-01T10:00:00', [s(12, 80), s(10, 80)]);
+  const b = entry('2026-11-03T10:00:00', [s(12, 85), s(12, 85)]);
+  const c = entry('2026-11-05T10:00:00', [s(8, 85)]);
+  recomputeRecords([c, a, b]); // a ordem de entrada não importa
+  assert.deepEqual(a.sets.map((x) => x.pr), [null, null]); // primeira sessão: referência
+  assert.deepEqual(b.sets.map((x) => x.pr), [['carga', '1RM estimado'], null]);
+  assert.deepEqual(c.sets.map((x) => x.pr), [null]);
+  // corrigindo a carga da 2ª sessão para baixo, o recorde some dela e vai para a 3ª
+  for (const x of b.sets) x.load = 80;
+  recomputeRecords([a, b, c]);
+  assert.deepEqual(b.sets.map((x) => x.pr), [null, null]);
+  assert.deepEqual(c.sets.map((x) => x.pr), [['carga']]);
 });

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0c0e12">
+  <meta name="theme-color" content="#f6f7f4">
   <title>Treino · demonstração</title>
   <!-- Tudo o que o app carrega é relativo à raiz do projeto. -->
   <base href="../">
@@ -13,17 +13,17 @@
     /* Tela de abertura da demonstração. É só encenação: os dados são gerados na hora. */
     #boot {
       position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 18px; padding: 24px; text-align: center; color: #f1f3f5;
-      background: radial-gradient(520px 320px at 50% 30%, rgba(163, 230, 53, 0.16), transparent 70%), #0c0e12;
+      gap: 18px; padding: 24px; text-align: center; color: var(--text);
+      background: radial-gradient(520px 320px at 50% 30%, var(--halo), transparent 70%), var(--page);
       transition: opacity 400ms ease, visibility 400ms;
     }
     #boot.done { opacity: 0; visibility: hidden; }
-    #boot svg { width: 84px; height: 84px; color: #a3e635; animation: lift 1.1s ease-in-out infinite; }
+    #boot svg { width: 84px; height: 84px; color: var(--mark); animation: lift 1.1s ease-in-out infinite; }
     #boot h1 { font-size: 30px; white-space: normal; }
-    #boot .tag { margin: -10px 0 0; color: #a3e635; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
-    #boot .barwrap { width: min(280px, 70vw); height: 6px; border-radius: 3px; background: #1c2028; overflow: hidden; }
-    #boot .barwrap i { display: block; height: 100%; width: 0; background: #a3e635; border-radius: 3px; transition: width 380ms ease; }
-    #boot p { margin: 0; min-height: 22px; color: #a7adb8; font-size: 15px; }
+    #boot .tag { margin: -10px 0 0; color: var(--mark); font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+    #boot .barwrap { width: min(280px, 70vw); height: 6px; border-radius: 3px; background: var(--surface2); overflow: hidden; }
+    #boot .barwrap i { display: block; height: 100%; width: 0; background: var(--mark); border-radius: 3px; transition: width 380ms ease; }
+    #boot p { margin: 0; min-height: 22px; color: var(--text2); font-size: 15px; }
     @keyframes lift { 50% { transform: translateY(-8px); } }
     @media (prefers-reduced-motion: reduce) { #boot svg { animation: none; } #boot, #boot .barwrap i { transition: none; } }
   </style>

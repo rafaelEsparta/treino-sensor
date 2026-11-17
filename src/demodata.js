@@ -129,5 +129,5 @@ export function buildDemoStore(now = Date.now()) {
     });
   }
 
-  return { version: 4, exercises, history };
+  return { version: 5, exercises, history };
 }

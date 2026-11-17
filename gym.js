@@ -7,7 +7,7 @@ import { initFree } from './free.js';
 import { DEFAULT_EXERCISES, DEFAULT_REST, DEFAULT_STEP, newDefault as makeDefault } from './src/defaults.js';
 import { buildDemoStore } from './src/demodata.js';
 import {
-  MUSCLES, activityByDay, dayKey, e1rm, e1rmSeries, entryVolume, exerciseEntries, muscleVolume, records, suggestLoad, toCSV, totals, validateImport,
+  MUSCLES, activityByDay, dayKey, e1rm, e1rmSeries, entryVolume, exerciseEntries, muscleVolume, recomputeRecords, records, suggestLoad, toCSV, totals, validateImport,
 } from './src/stats.js';
 
 const $ = (id) => document.getElementById(id);
@@ -23,10 +23,10 @@ const DETECTION = ['restDetect', 'velOn', 'minRange', 'stillAcc'];
 const DEMO = /\/demo(\/|\/index\.html)?$/.test(location.pathname);
 const newDefault = (def) => makeDefault(def, uid());
 const defaultStore = () => ({
-  version: 4,
+  version: 5,
   exercises: DEFAULT_EXERCISES.map(newDefault),
   history: [],
-  settings: { sound: true, vibrate: true, ...Object.fromEntries(DETECTION.map((k) => [k, DEFAULTS[k]])) },
+  settings: { sound: true, vibrate: true, theme: 'light', ...Object.fromEntries(DETECTION.map((k) => [k, DEFAULTS[k]])) },
 });
 function loadStore() {
   const base = defaultStore();
@@ -38,6 +38,7 @@ function loadStore() {
       if (!(saved.version >= 2)) migrateToV2(merged);
       if (!(saved.version >= 3)) migrateToV3(merged);
       if (!(saved.version >= 4)) migrateToV4(merged);
+      if (!(saved.version >= 5)) migrateToV5(merged);
       return merged;
     }
   } catch {
@@ -77,6 +78,12 @@ function migrateToV3(s) {
   s.version = 3;
 }
 /** Versão 4: lista de exercícios padrão ampliada (peito, ombros, braços, panturrilha, abdômen). */
+/** Versão 5: sentido da repetição; agachamento livre e leg press 45 partem de cima. */
+function migrateToV5(s) {
+  const downFirst = new Set(DEFAULT_EXERCISES.filter((d) => d[3]).map((d) => d[0]));
+  for (const x of s.exercises) x.downFirst ??= downFirst.has(x.name);
+  s.version = 5;
+}
 function migrateToV4(s) {
   for (const def of DEFAULT_EXERCISES) {
     if (!s.exercises.some((x) => x.name === def[0])) s.exercises.push(newDefault(def));
@@ -332,7 +339,7 @@ function disconnect() {
   setMode('off');
 }
 
-function toggleDemo() {
+function toggleDemo(downFirst = false) {
   if (simTimer) {
     clearInterval(simTimer);
     simTimer = null;
@@ -340,7 +347,7 @@ function toggleDemo() {
     return;
   }
   const makeGen = () =>
-    simulate(workoutScript([{ reps: 6, up: 1, down: 1.5, pauseTop: 0.3, pauseBottom: 0.2, rest: 25 }]), { rate: 50, seed: Date.now() });
+    simulate(workoutScript([{ reps: 6, up: 1, down: 1.5, pauseTop: 0.3, pauseBottom: 0.2, rest: 25, range: downFirst ? -0.3 : 0.3 }]), { rate: 50, seed: Date.now() });
   let gen = makeGen();
   let last = performance.now();
   setMode('sim');
@@ -486,6 +493,7 @@ function openEditor(ex) {
   $('fMuscle').innerHTML = MUSCLES.map((m) => `<option>${m}</option>`).join('');
   $('fMuscle').value = ex?.muscle ?? 'Outro';
   $('fStep').value = ex?.step ?? DEFAULT_STEP;
+  $('fDir').value = ex?.downFirst ? 'down' : 'up';
   $('fDelete').hidden = !ex;
   $('dlg').showModal();
 }
@@ -506,6 +514,7 @@ $('exForm').onsubmit = () => {
     load: $('fLoad').value === '' ? null : Number($('fLoad').value),
     muscle: $('fMuscle').value,
     step: Number($('fStep').value) || DEFAULT_STEP,
+    downFirst: $('fDir').value === 'down',
   };
   if (editing) {
     if (data.load !== editing.load) editing.suggested = false;
@@ -520,10 +529,15 @@ $('exForm').onsubmit = () => {
 // ---------- treino ----------
 function startExercise(ex) {
   beep(1, 1); // destrava o áudio com o toque do usuário
-  if (DEMO && sensor.mode === 'off') toggleDemo(); // na demonstração o "sensor" é simulado
+  if (DEMO) {
+    // na demonstração o "sensor" é simulado, no sentido do exercício escolhido
+    if (simTimer) toggleDemo();
+    if (sensor.mode === 'off') toggleDemo(Boolean(ex.downFirst));
+  }
   rc.reset();
   applyDetection();
   rc.cfg.restTarget = ex.rest;
+  rc.cfg.downFirst = Boolean(ex.downFirst);
   active = { exercise: ex, entry: null, restWallStart: null, restTarget: ex.rest, restAlerted: false };
   $('wLoad').value = ex.load ?? '';
   active.suggestion = suggestLoad(ex, exerciseEntries(store.history, ex));
@@ -684,13 +698,90 @@ function renderHistory() {
                 })
                 .join('');
               const rests = e.sets.filter((s) => s.rest !== null && s.rest !== undefined).map((s) => mmss(s.rest));
-              return `<div class="entry"><div class="entry-top"><b>${esc(e.name)}</b><span>${time}</span></div><ol class="reps">${reps}</ol>${rests.length ? `<p>Descansos: ${rests.join(' · ')}</p>` : ''}</div>`;
+              return `<div class="entry"><div class="entry-top"><b>${esc(e.name)}</b><span>${time}</span><button class="hedit" data-hist="${esc(e.id)}" aria-label="Editar registro de ${esc(e.name)}">Editar</button></div><ol class="reps">${reps}</ol>${rests.length ? `<p>Descansos: ${rests.join(' · ')}</p>` : ''}</div>`;
             })
             .join('')}</div>`;
         })
         .join('')
     : '<p class="empty">Nenhum treino registrado ainda.<br>Escolha um exercício em Treinar para começar.</p>';
 }
+// ---------- edição de um registro do histórico ----------
+let editingEntry = null;
+const sameExercise = (e, ref) => (ref.exId ? e.exId === ref.exId : e.name === ref.name);
+
+function setRow(n, reps, load) {
+  return `<div class="hset"><span>${n}ª</span>
+    <input type="number" inputmode="numeric" min="0" max="999" step="1" value="${reps}" aria-label="Repetições da ${n}ª série" required>
+    <input type="number" inputmode="decimal" min="0" step="0.5" value="${load ?? ''}" placeholder="—" aria-label="Carga da ${n}ª série">
+    <button type="button" data-remove aria-label="Remover a ${n}ª série">×</button></div>`;
+}
+/** Lê as linhas da folha: [{ reps, load }] */
+function readSetRows() {
+  return [...$('hSets').children].map((row) => {
+    const [reps, load] = row.querySelectorAll('input');
+    return { reps: Math.max(0, Math.round(Number(reps.value) || 0)), load: load.value === '' ? null : Number(load.value) };
+  });
+}
+function renderSetRows(rows) {
+  $('hSets').innerHTML = rows.map((r, i) => setRow(i + 1, r.reps, r.load)).join('');
+}
+
+function openHistoryEditor(entry) {
+  editingEntry = entry;
+  $('hTitle').textContent = entry.name;
+  const d = new Date(entry.date);
+  $('hDate').value = `${dayKey(d)}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  renderSetRows(entry.sets.map((s) => ({ reps: s.reps, load: s.load ?? entry.load ?? null })));
+  $('hDlg').showModal();
+}
+
+/** Depois de qualquer correção: reordena por data, recalcula recordes e grava. */
+function afterHistoryChange(ref) {
+  store.history.sort((x, y) => new Date(x.date) - new Date(y.date));
+  recomputeRecords(store.history.filter((e) => sameExercise(e, ref)));
+  save();
+  renderHistory();
+}
+
+$('histList').onclick = (e) => {
+  const b = e.target.closest('[data-hist]');
+  const entry = b && store.history.find((x) => String(x.id) === b.dataset.hist);
+  if (entry) openHistoryEditor(entry);
+};
+$('hSets').onclick = (e) => {
+  if (!e.target.closest('[data-remove]')) return;
+  const rows = readSetRows();
+  rows.splice([...$('hSets').children].indexOf(e.target.closest('.hset')), 1);
+  renderSetRows(rows);
+};
+$('hAdd').onclick = () => {
+  const rows = readSetRows();
+  const last = rows[rows.length - 1];
+  rows.push({ reps: last ? last.reps : 12, load: last ? last.load : editingEntry.load ?? null });
+  renderSetRows(rows);
+};
+$('hCancel').onclick = () => $('hDlg').close();
+$('hDelete').onclick = () => {
+  if (!confirm(`Excluir este registro de "${editingEntry.name}"? Não dá para desfazer.`)) return;
+  store.history = store.history.filter((x) => x !== editingEntry);
+  $('hDlg').close();
+  afterHistoryChange(editingEntry);
+};
+$('hForm').onsubmit = () => {
+  const entry = editingEntry;
+  const rows = readSetRows();
+  if (!rows.length) {
+    store.history = store.history.filter((x) => x !== entry); // sem séries não há registro
+  } else {
+    const when = new Date($('hDate').value);
+    if (!Number.isNaN(when.getTime())) entry.date = when.toISOString();
+    // mantém duração e descanso das séries que continuam na mesma posição
+    entry.sets = rows.map((r, i) => ({ ...(entry.sets[i] || { duration: null, rest: null }), reps: r.reps, load: r.load, pr: null }));
+    entry.load = rows[rows.length - 1].load;
+  }
+  afterHistoryChange(entry);
+};
+
 $('btnClearHist').onclick = () => {
   if (!confirm('Apagar todo o histórico? Não dá para desfazer.')) return;
   store.history = [];
@@ -867,7 +958,7 @@ $('fileImport').onchange = async (e) => {
     store.exercises = data.exercises;
     store.history = data.history;
     store.settings = { ...store.settings, ...data.settings };
-    store.version = 4;
+    store.version = 5;
     save();
     location.reload();
   } catch (err) {
@@ -877,11 +968,24 @@ $('fileImport').onchange = async (e) => {
 
 // ---------- ajustes ----------
 const FIELDS = { oRestDetect: 'restDetect', oVelOn: 'velOn', oMinRange: 'minRange', oStillAcc: 'stillAcc' };
+/** Tema claro por padrão; o escuro é ligado em Ajustes. */
+function applyTheme() {
+  const dark = store.settings.theme === 'dark';
+  if (dark) document.documentElement.dataset.theme = 'dark';
+  else delete document.documentElement.dataset.theme;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0c0e12' : '#f6f7f4');
+}
 function fillSettings() {
+  $('oDark').checked = store.settings.theme === 'dark';
   $('oSound').checked = store.settings.sound;
   $('oVibrate').checked = store.settings.vibrate;
   for (const [id, key] of Object.entries(FIELDS)) $(id).value = store.settings[key];
 }
+$('oDark').onchange = (e) => {
+  store.settings.theme = e.target.checked ? 'dark' : 'light';
+  applyTheme();
+  save();
+};
 $('oSound').onchange = (e) => {
   store.settings.sound = e.target.checked;
   save();
@@ -906,7 +1010,7 @@ $('btnDefaults').onclick = () => {
   fillSettings();
 };
 $('btnDisconnect').onclick = disconnect;
-$('btnDemo').onclick = toggleDemo;
+$('btnDemo').onclick = () => toggleDemo();
 $('conn').onclick = () => {
   if (sensor.mode === 'off') connect();
   else if (!active) show('settings');
@@ -932,6 +1036,7 @@ if (!navigator.bluetooth) {
   $('connText').textContent = 'Sem Bluetooth';
 }
 if ('serviceWorker' in navigator && !DEMO) navigator.serviceWorker.register('sw.js').catch(() => {});
+applyTheme();
 fillSettings();
 setMode('off');
 if (DEMO) {

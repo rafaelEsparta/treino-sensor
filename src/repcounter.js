@@ -23,6 +23,9 @@ export const DEFAULTS = {
   restDetect: 3, // s sem movimento para encerrar a série
   restTarget: 90, // s: descanso predefinido
   handlingGyro: 60, // °/s: rotação acima disso = sensor sendo manuseado (0 desliga)
+  // false: parte de baixo, sobe e desce (pilha de pesos).
+  // true: parte de cima, desce e sobe (agachamento, leg press 45).
+  downFirst: false,
 };
 
 export class RepCounter {
@@ -186,7 +189,9 @@ export class RepCounter {
 
   #stepPhase(dt, events, quiet, zupt) {
     const c = this.cfg;
-    const v = this.vVert;
+    // Com downFirst, a máquina de estados enxerga o movimento espelhado: as
+    // fases "up/top/down" passam a significar descida, fundo e subida.
+    const v = this.cfg.downFirst ? -this.vVert : this.vVert;
     const cur = this.cur;
     // Deslocamento medido com o sensor "quieto" fica pendente: se o trecho
     // terminar em parada confirmada era deriva e é descartado; se o movimento

@@ -18,7 +18,9 @@ test('exercícios padrão: nomes únicos, grupo muscular válido e carga sugerid
   for (const m of ['Quadríceps', 'Posteriores', 'Glúteos', 'Costas', 'Peito', 'Ombros', 'Bíceps', 'Tríceps']) {
     assert.ok(DEFAULT_EXERCISES.some((d) => d[2] === m), m);
   }
-  assert.deepEqual(newDefault(['X', 10, 'Peito'], 'id1'), { id: 'id1', name: 'X', rest: 90, sets: 3, reps: 12, load: 10, step: 5, muscle: 'Peito', suggested: true });
+  assert.deepEqual(newDefault(['X', 10, 'Peito'], 'id1'), { id: 'id1', name: 'X', rest: 90, sets: 3, reps: 12, load: 10, step: 5, muscle: 'Peito', downFirst: false, suggested: true });
+  // só agachamento livre e leg press 45 partem de cima
+  assert.deepEqual(DEFAULT_EXERCISES.filter((d) => d[3]).map((d) => d[0]), ['Agachamento livre', 'Leg press 45']);
 });
 
 test('demo: cerca de 12 semanas, sem datas no futuro, determinístico', () => {

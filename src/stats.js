@@ -40,6 +40,30 @@ export function records(entries) {
 }
 
 /**
+ * Recalcula as marcas de recorde de um exercício, na ordem das datas. Usado
+ * depois de corrigir o histórico. A primeira sessão é a referência e nunca
+ * é recorde.
+ * @param {object[]} entries entradas de um mesmo exercício, em qualquer ordem
+ */
+export function recomputeRecords(entries) {
+  const sorted = [...entries].sort((x, y) => new Date(x.date) - new Date(y.date));
+  let maxLoad = 0;
+  let best = 0;
+  sorted.forEach((e, n) => {
+    for (const s of e.sets) {
+      const load = loadOf(e, s) || 0;
+      const est = e1rm(load, s.reps);
+      const kinds = [];
+      if (n > 0 && load > maxLoad) kinds.push('carga');
+      if (n > 0 && est > best + 0.01) kinds.push('1RM estimado');
+      s.pr = kinds.length ? kinds : null;
+      maxLoad = Math.max(maxLoad, load);
+      best = Math.max(best, est);
+    }
+  });
+}
+
+/**
  * Dupla progressão: se na última vez todas as séries planejadas bateram a
  * meta de repetições com a mesma carga, sugere subir a carga.
  */
@@ -158,6 +182,7 @@ export function validateImport(data) {
       step: Math.max(0.5, num(x.step, 5)),
       muscle: MUSCLES.includes(x.muscle) ? x.muscle : 'Outro',
       suggested: Boolean(x.suggested),
+      downFirst: Boolean(x.downFirst),
       ...(typeof x.pose === 'string' ? { pose: x.pose } : {}), // exercício do treino livre
     }));
   const history = data.history

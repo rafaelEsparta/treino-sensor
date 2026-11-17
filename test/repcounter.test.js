@@ -103,3 +103,25 @@ test('finishSet encerra a série na hora', () => {
   assert.equal(rc.state, 'rest');
   assert.equal(rc.finishSet(), null);
 });
+
+test('desce e sobe (agachamento, leg press 45): conta com downFirst', () => {
+  const sets = [{ reps: 10, up: 1.5, down: 1, pauseTop: 0.3, pauseBottom: 0.3, range: -0.3, rest: 8 }];
+  const { rc } = run(sets, { options: { downFirst: true } });
+  assert.deepEqual(rc.sets.map((s) => s.reps), [10]);
+  for (const rep of rc.sets[0].repDetails) assert.ok(rep.range > 0.2 && rep.range < 0.4, `range=${rep.range}`);
+});
+
+test('desce e sobe: a repetição só conta na volta ao topo', () => {
+  const sets = [{ reps: 3, up: 1.5, down: 1.5, pauseTop: 1, pauseBottom: 0.5, range: -0.3, rest: 6 }];
+  const { events } = run(sets, { options: { downFirst: true } });
+  const reps = events.filter((e) => e.type === 'rep');
+  assert.equal(reps.length, 3);
+  // roteiro: 2 s parado, 1,5 s descendo, 1 s no fundo, 1,5 s subindo -> a 1ª termina perto de 6 s
+  assert.ok(reps[0].t > 5.3 && reps[0].t < 6.8, `1ª repetição em t=${reps[0].t}`);
+});
+
+test('pilha de pesos continua contando sobe e desce por padrão', () => {
+  const { rc } = run([{ reps: 8, up: 1, down: 1.5, pauseTop: 0.3, rest: 6 }]);
+  assert.equal(rc.cfg.downFirst, false);
+  assert.deepEqual(rc.sets.map((s) => s.reps), [8]);
+});
