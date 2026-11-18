@@ -9,6 +9,7 @@ import { buildDemoStore } from './src/demodata.js';
 import {
   MUSCLES, activityByDay, dayKey, e1rm, e1rmSeries, entryVolume, exerciseEntries, muscleVolume, recomputeRecords, records, suggestLoad, toCSV, totals, validateImport,
 } from './src/stats.js';
+import { initInstall } from './src/install.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -1036,6 +1037,12 @@ if (!navigator.bluetooth) {
   $('connText').textContent = 'Sem Bluetooth';
 }
 if ('serviceWorker' in navigator && !DEMO) navigator.serviceWorker.register('sw.js').catch(() => {});
+if (!DEMO) {
+  initInstall(
+    { block: $('installBox'), button: $('btnInstall'), text: $('installText') },
+    new URLSearchParams(location.search).get('instalar') === '1',
+  );
+}
 applyTheme();
 fillSettings();
 setMode('off');
