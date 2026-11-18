@@ -10,6 +10,10 @@ import {
   MUSCLES, activityByDay, dayKey, e1rm, e1rmSeries, entryVolume, exerciseEntries, muscleVolume, recomputeRecords, records, suggestLoad, toCSV, totals, validateImport,
 } from './src/stats.js';
 import { initInstall } from './src/install.js';
+import {
+  applyWorkoutImport, compareWithPrevious, daySummary, decodeShare, defaultWorkouts, encodeShare, lastDone, nextWorkout, normName, parseWorkouts, summaryText, workoutKey, workoutsToText,
+} from './src/workouts.js';
+import { summaryImage } from './share.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -23,12 +27,16 @@ const DETECTION = ['restDetect', 'velOn', 'minRange', 'stillAcc'];
 // Página /demo: mesmos arquivos, dados fictícios gerados na hora e nada gravado no aparelho.
 const DEMO = /\/demo(\/|\/index\.html)?$/.test(location.pathname);
 const newDefault = (def) => makeDefault(def, uid());
-const defaultStore = () => ({
-  version: 5,
-  exercises: DEFAULT_EXERCISES.map(newDefault),
-  history: [],
-  settings: { sound: true, vibrate: true, theme: 'light', ...Object.fromEntries(DETECTION.map((k) => [k, DEFAULTS[k]])) },
-});
+const defaultStore = () => {
+  const exercises = DEFAULT_EXERCISES.map(newDefault);
+  return {
+    version: 6,
+    exercises,
+    workouts: [], // os treinos A/B/C pré-definidos só entram se a pessoa pedir (botão "+ ABC")
+    history: [],
+    settings: { sound: true, vibrate: true, theme: 'light', ...Object.fromEntries(DETECTION.map((k) => [k, DEFAULTS[k]])) },
+  };
+};
 function loadStore() {
   const base = defaultStore();
   if (DEMO) return { ...base, ...buildDemoStore(Date.now()) };
@@ -40,6 +48,7 @@ function loadStore() {
       if (!(saved.version >= 3)) migrateToV3(merged);
       if (!(saved.version >= 4)) migrateToV4(merged);
       if (!(saved.version >= 5)) migrateToV5(merged);
+      if (!(saved.version >= 6)) migrateToV6(merged, saved);
       return merged;
     }
   } catch {
@@ -85,6 +94,11 @@ function migrateToV5(s) {
   for (const x of s.exercises) x.downFirst ??= downFirst.has(x.name);
   s.version = 5;
 }
+/** Versão 6: treinos montados (ficha A/B/C). Começa sem nenhum. */
+function migrateToV6(s, saved) {
+  s.workouts = Array.isArray(saved.workouts) ? saved.workouts : [];
+  s.version = 6;
+}
 function migrateToV4(s) {
   for (const def of DEFAULT_EXERCISES) {
     if (!s.exercises.some((x) => x.name === def[0])) s.exercises.push(newDefault(def));
@@ -106,6 +120,7 @@ const rc = new RepCounter();
 const parser = new FrameParser();
 const sensor = { mode: 'off', device: null, write: null, wanted: false, retries: 0, rate: 10, arrivals: [], battery: null };
 let active = null; // { exercise, entry, restWallStart, restTarget, restAlerted }
+let session = null; // treino montado em andamento: { workout, done:Set<id do exercício>, startedAt }
 let view = 'home';
 let simTimer = null;
 let wakeLock = null;
@@ -218,6 +233,7 @@ function persist() {
   if (!active.entry) {
     const x = active.exercise;
     active.entry = { id: uid(), date: new Date().toISOString(), name: x.name, exId: x.id, muscle: x.muscle, load: x.load, sets: [] };
+    if (session) active.entry.workoutId = session.workout.id;
     store.history.push(active.entry);
   }
   active.entry.load = active.exercise.load;
@@ -369,10 +385,10 @@ function toggleDemo(downFirst = false) {
 }
 
 // ---------- navegação ----------
-const TITLES = { home: 'Treinar', free: 'Treino livre', progress: 'Progresso', history: 'Histórico', settings: 'Ajustes' };
+const TITLES = { home: 'Treinar', free: 'Treino livre', progress: 'Progresso', history: 'Histórico', settings: 'Ajustes', summary: 'Resumo do treino' };
 function show(next) {
   view = next;
-  for (const v of ['home', 'workout', 'free', 'progress', 'history', 'settings']) $(v).hidden = v !== next;
+  for (const v of ['home', 'workout', 'free', 'progress', 'history', 'settings', 'summary']) $(v).hidden = v !== next;
   const focused = next === 'workout' || next === 'free';
   $('tabs').hidden = focused;
   $('btnBack').hidden = !focused;
@@ -383,6 +399,7 @@ function show(next) {
     next === 'workout' ? active.exercise.muscle || ''
     : next === 'free' ? 'câmera · halteres e peso do corpo'
     : next === 'home' ? new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
+    : next === 'summary' ? summaryCtx?.label || ''
     : '';
   for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.view === next);
   if (next === 'home') renderExercises();
@@ -438,8 +455,30 @@ function renderWeek() {
     <div><b>${t.volume >= 1000 ? `${num(t.volume / 1000, 1)} t` : `${int(t.volume)} kg`}</b><small>volume</small></div>`;
 }
 
+const queueOf = (w) => w.items.map((id) => store.exercises.find((x) => x.id === id)).filter(Boolean);
+
+function renderWorkouts() {
+  const next = nextWorkout(store.workouts, store.history);
+  $('wkList').innerHTML = store.workouts.length
+    ? store.workouts
+        .map((w) => {
+          const q = queueOf(w);
+          const last = lastDone(w, store.history);
+          const names = q.map((x) => x.name).join(', ');
+          return `<li class="${w === next ? 'next' : ''}"><button class="go" data-wk="${w.id}">
+            <span class="avatar" aria-hidden="true">${esc(initials(w.name).slice(0, 1) || '?')}</span>
+            <span class="body"><b>${esc(w.name)}</b>
+              <small>${q.length} ${q.length === 1 ? 'exercício' : 'exercícios'}${w === next ? '<span class="badge">próximo</span>' : ''}</small>
+              <small class="last">${last ? `Último: ${ago(last)}` : esc(names) || 'Sem exercícios'}</small></span>
+          </button><button class="more" data-wkedit="${w.id}" aria-label="Editar ${esc(w.name)}">${DOTS}</button></li>`;
+        })
+        .join('')
+    : '<li class="empty">Nenhum treino montado. Toque em <b>+ ABC</b> para começar com os treinos A, B e C prontos, crie o seu em <b>+ Novo</b> ou importe a ficha do seu professor.</li>';
+}
+
 function renderExercises() {
   renderWeek();
+  renderWorkouts();
   const sensor = store.exercises.filter((x) => !x.pose); // os do treino livre ficam fora desta lista
   const used = MUSCLES.filter((m) => sensor.some((x) => (x.muscle || 'Outro') === m));
   if (!used.includes(muscleFilter)) muscleFilter = 'Todos';
@@ -502,6 +541,7 @@ $('fCancel').onclick = () => $('dlg').close();
 $('fDelete').onclick = () => {
   if (!confirm(`Excluir "${editing.name}"? O histórico é mantido.`)) return;
   store.exercises = store.exercises.filter((x) => x !== editing);
+  for (const w of store.workouts) w.items = w.items.filter((id) => id !== editing.id);
   save();
   $('dlg').close();
   renderExercises();
@@ -546,17 +586,84 @@ function startExercise(ex) {
   show('workout');
 }
 
-function finishExercise() {
+/**
+ * Fecha o exercício atual. Dentro de um treino montado segue para o próximo;
+ * `target` escolhe outro exercício da fila, e `null` encerra o treino.
+ */
+function finishExercise(target) {
   const closed = rc.finishSet();
   if (closed) {
     closed.load = active.exercise.load;
     checkRecord(closed);
   }
   persist();
+  if (session) {
+    if (rc.sets.length) session.done.add(active.exercise.id);
+    const next = target === undefined ? nextInSession() : target;
+    if (next) {
+      startExercise(next);
+      return;
+    }
+    endSession();
+    return;
+  }
   active = null;
   keepAwake(false);
   show('home');
 }
+
+// ---------- treino montado: sessão guiada ----------
+function startWorkout(w) {
+  const first = queueOf(w)[0];
+  if (!first) {
+    toast('Este treino ainda não tem exercícios. Toque nos três pontos para montar.');
+    return;
+  }
+  session = { workout: w, done: new Set(), startedAt: Date.now() };
+  startExercise(first);
+}
+/** Próximo exercício ainda não feito, na ordem da ficha, a partir do atual. */
+function nextInSession() {
+  const q = queueOf(session.workout);
+  const i = q.indexOf(active.exercise);
+  for (let k = 1; k < q.length; k++) {
+    const x = q[(i + k) % q.length];
+    if (!session.done.has(x.id)) return x;
+  }
+  return null;
+}
+function endSession() {
+  const w = session.workout;
+  session = null;
+  active = null;
+  keepAwake(false);
+  if (DEMO && simTimer) toggleDemo();
+  const today = dayKey(new Date());
+  if (store.history.some((e) => e.workoutId === w.id && dayKey(e.date) === today)) openSummary(today, 'home', w.id);
+  else show('home');
+}
+let queueSig = '';
+function renderSession() {
+  $('wSession').hidden = !session;
+  if (!session) return;
+  const q = queueOf(session.workout);
+  const cur = active.exercise;
+  $('wsName').textContent = session.workout.name;
+  $('wsPos').textContent = `${q.indexOf(cur) + 1} de ${q.length}`;
+  // só redesenha a fila quando ela muda, para não perder toques
+  const sig = `${cur.id}|${q.map((x) => `${x.id}${session.done.has(x.id) ? '+' : ''}`).join(',')}`;
+  if (sig === queueSig) return;
+  queueSig = sig;
+  $('wsQueue').innerHTML = q
+    .map((x) => `<li class="${x === cur ? 'cur' : session.done.has(x.id) ? 'done' : ''}"><button data-q="${x.id}"${x === cur ? ' aria-current="step"' : ''}>${session.done.has(x.id) && x !== cur ? '✓ ' : ''}${esc(x.name)}</button></li>`)
+    .join('');
+  $('wsQueue').querySelector('.cur')?.scrollIntoView({ inline: 'center', block: 'nearest' });
+}
+$('wsQueue').onclick = (e) => {
+  const b = e.target.closest('[data-q]');
+  const x = b && store.exercises.find((y) => y.id === b.dataset.q);
+  if (x && x !== active.exercise) finishExercise(x);
+};
 
 function adjustReps(d) {
   if (rc.state === 'set') {
@@ -588,8 +695,9 @@ $('btnMinus').onclick = () => adjustReps(-1);
 $('btnEndSet').onclick = () => {
   if (rc.finishSet()) startRest(0);
 };
-$('btnFinish').onclick = finishExercise;
-$('btnBack').onclick = () => (free.open ? free.finish() : finishExercise());
+$('btnFinish').onclick = () => finishExercise();
+// a seta de voltar sai do treino montado inteiro (e mostra o resumo do que foi feito)
+$('btnBack').onclick = () => (free.open ? free.finish() : finishExercise(session ? null : undefined));
 $('btnRestPlus').onclick = () => {
   active.restTarget += 15;
   active.restAlerted = false;
@@ -608,6 +716,8 @@ function renderWorkout() {
   const resting = rc.state === 'rest' && active.restWallStart !== null;
   const done = rc.sets.length;
   $('wWarn').hidden = sensor.mode === 'on' || sensor.mode === 'sim';
+  renderSession();
+  $('btnFinish').textContent = !session ? 'Concluir' : nextInSession() ? 'Próximo ›' : 'Finalizar treino';
 
   const sug = active.suggestion;
   $('wSuggest').hidden = !sug || done > 0 || (ex.load || 0) >= sug.load;
@@ -689,7 +799,7 @@ function renderHistory() {
         .map(([key, entries]) => {
           const label = new Date(`${key}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
           const t = totals(entries);
-          return `<div class="day"><div class="day-head"><h2>${esc(label)}</h2><span>${t.sets} séries · ${tons(t.volume)}</span></div>${entries
+          return `<div class="day"><div class="day-head"><h2>${esc(label)}</h2><span class="day-meta">${t.sets} séries · ${tons(t.volume)}<button class="daysum" data-day="${key}" aria-label="Resumo de ${esc(label)}">Resumo</button></span></div>${entries
             .map((e) => {
               const time = new Date(e.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
               const reps = e.sets
@@ -745,6 +855,11 @@ function afterHistoryChange(ref) {
 }
 
 $('histList').onclick = (e) => {
+  const day = e.target.closest('[data-day]');
+  if (day) {
+    openSummary(day.dataset.day, 'history');
+    return;
+  }
   const b = e.target.closest('[data-hist]');
   const entry = b && store.history.find((x) => String(x.id) === b.dataset.hist);
   if (entry) openHistoryEditor(entry);
@@ -788,6 +903,235 @@ $('btnClearHist').onclick = () => {
   store.history = [];
   save();
   renderHistory();
+};
+
+// ---------- resumo do treino do dia ----------
+let summaryCtx = null; // { sum, label, back }
+function openSummary(key, back = 'home', workoutId = null) {
+  const sum = daySummary(store.history, key, store.workouts);
+  if (!sum.sets) {
+    show(back);
+    return;
+  }
+  const label = new Date(`${key}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+  summaryCtx = { sum, label, back };
+  $('sumTitle').textContent = sum.workout || 'Treino do dia';
+  $('sumPrs').textContent = sum.prs ? `★ ${sum.prs} ${sum.prs === 1 ? 'recorde batido' : 'recordes batidos'}` : '';
+  $('sumTiles').innerHTML = `
+    <div><b>${sum.exercises.length}</b><small>${sum.exercises.length === 1 ? 'exercício' : 'exercícios'}</small></div>
+    <div><b>${sum.sets}</b><small>séries · ${int(sum.reps)} repetições</small></div>
+    <div><b>${tons(sum.volume)}</b><small>volume</small></div>
+    <div><b>${sum.minutes} min</b><small>duração</small></div>`;
+  // compara o treino que acabou de terminar; vindo do histórico, o último do dia
+  const wid = workoutId || store.history.findLast((e) => dayKey(e.date) === key && e.workoutId)?.workoutId;
+  const cmp = compareWithPrevious(store.history, key, wid);
+  const wname = esc(store.workouts.find((w) => w.id === wid)?.name || 'este treino');
+  $('sumCompare').hidden = !cmp;
+  if (cmp) {
+    const pct = Math.round(Math.abs(cmp.delta) * 100);
+    const when = shortDate(`${cmp.previousKey}T12:00:00`);
+    $('sumCompare').classList.toggle('up', cmp.delta > 0.005);
+    $('sumCompare').innerHTML = pct === 0
+      ? `<b>Mesmo volume da última vez</b><br>Comparado com ${wname} em ${when}.`
+      : `<b>Volume ${pct}% ${cmp.delta > 0 ? 'acima' : 'abaixo'} da última vez</b><br>Comparado com ${wname} em ${when} (${tons(cmp.previous)}).`;
+  }
+  $('sumList').innerHTML = sum.exercises
+    .map((x) => {
+      const same = x.sets.every((r) => r === x.sets[0]);
+      const reps = same ? `${x.sets.length} × ${x.sets[0]}` : x.sets.join(' · ');
+      return `<div class="srow${x.pr ? ' pr' : ''}"><b>${esc(x.name)}</b><span>${reps}${x.topLoad ? ` · ${kg(x.topLoad)}` : ''}${x.pr ? ' ★' : ''}</span></div>`;
+    })
+    .join('');
+  show('summary');
+}
+$('btnSumDone').onclick = () => show(summaryCtx?.back || 'home');
+
+function downloadBlob(name, blob) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+/** Compartilha imagem + texto; sem suporte do navegador, copia o texto e baixa a imagem. */
+async function shareSummary() {
+  const { sum, label } = summaryCtx;
+  const text = summaryText(sum, label);
+  let file = null;
+  try {
+    const blob = await summaryImage(sum, label, { dark: store.settings.theme === 'dark' });
+    file = new File([blob], `treino-${sum.key}.png`, { type: 'image/png' });
+  } catch {
+    /* sem imagem: segue só com o texto */
+  }
+  try {
+    if (file && navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file], text });
+      return;
+    }
+    if (navigator.share) {
+      await navigator.share({ text });
+      return;
+    }
+  } catch (err) {
+    if (err.name === 'AbortError') return; // a pessoa fechou a folha de compartilhar
+  }
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(text);
+    copied = true;
+  } catch {
+    /* sem área de transferência */
+  }
+  if (file) downloadBlob(file.name, file);
+  toast(copied ? (file ? 'Texto copiado e imagem baixada.' : 'Resumo copiado.') : file ? 'Imagem do resumo baixada.' : 'Este navegador não deixa compartilhar.');
+}
+$('btnShare').onclick = shareSummary;
+
+// ---------- treinos montados: lista, editor e envio ----------
+$('wkList').onclick = (e) => {
+  const go = e.target.closest('[data-wk]');
+  const edit = e.target.closest('[data-wkedit]');
+  if (go) startWorkout(store.workouts.find((w) => w.id === go.dataset.wk));
+  else if (edit) openWorkoutEditor(store.workouts.find((w) => w.id === edit.dataset.wkedit));
+};
+$('btnWkAdd').onclick = () => openWorkoutEditor(null);
+/** Acrescenta os treinos A, B e C pré-definidos que ainda não estão na lista. */
+$('btnWkAbc').onclick = () => {
+  // exercício padrão que a pessoa apagou volta, para o treino não ficar com buraco
+  for (const def of DEFAULT_EXERCISES) {
+    if (!store.exercises.some((x) => normName(x.name) === normName(def[0]))) store.exercises.push(newDefault(def));
+  }
+  const have = new Set(store.workouts.map((w) => workoutKey(w.name)));
+  const fresh = defaultWorkouts(store.exercises.filter((x) => !x.pose), uid).filter((w) => !have.has(workoutKey(w.name)));
+  if (!fresh.length) {
+    toast('Os treinos A, B e C já estão na lista.');
+    return;
+  }
+  store.workouts.push(...fresh);
+  save();
+  renderExercises();
+  toast(`${fresh.length} ${fresh.length === 1 ? 'treino adicionado' : 'treinos adicionados'}. Toque nos três pontos para ajustar.`);
+};
+
+let editingWk = null;
+let wkItems = [];
+function renderWkItems() {
+  const list = wkItems.map((id) => store.exercises.find((x) => x.id === id)).filter(Boolean);
+  wkItems = list.map((x) => x.id);
+  $('wkItems').innerHTML = list
+    .map((x, i) => `<li><span>${esc(x.name)}<small>${x.sets} × ${x.reps}</small></span>
+      <button type="button" data-up="${i}" aria-label="Subir ${esc(x.name)}"${i === 0 ? ' disabled' : ''}>↑</button>
+      <button type="button" data-down="${i}" aria-label="Descer ${esc(x.name)}"${i === list.length - 1 ? ' disabled' : ''}>↓</button>
+      <button type="button" data-rm="${i}" aria-label="Tirar ${esc(x.name)}">×</button></li>`)
+    .join('');
+  const rest = store.exercises.filter((x) => !x.pose && !wkItems.includes(x.id));
+  $('wkPick').innerHTML = `<option value="">${rest.length ? 'Escolher…' : 'Todos os exercícios já estão no treino'}</option>${rest.map((x) => `<option value="${x.id}">${esc(x.name)} · ${esc(x.muscle || 'Outro')}</option>`).join('')}`;
+}
+function openWorkoutEditor(w) {
+  editingWk = w;
+  wkItems = w ? [...w.items] : [];
+  $('wkTitle').textContent = w ? 'Editar treino' : 'Novo treino';
+  $('wkName').value = w?.name ?? '';
+  $('wkDelete').hidden = !w;
+  $('wkShare').hidden = !w;
+  renderWkItems();
+  $('wkDlg').showModal();
+}
+$('wkPick').onchange = (e) => {
+  if (e.target.value) wkItems.push(e.target.value);
+  renderWkItems();
+};
+$('wkItems').onclick = (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  const i = Number(b.dataset.up ?? b.dataset.down ?? b.dataset.rm);
+  if (b.dataset.rm !== undefined) wkItems.splice(i, 1);
+  else {
+    const j = b.dataset.up !== undefined ? i - 1 : i + 1;
+    [wkItems[i], wkItems[j]] = [wkItems[j], wkItems[i]];
+  }
+  renderWkItems();
+};
+$('wkCancel').onclick = () => $('wkDlg').close();
+$('wkDelete').onclick = () => {
+  if (!confirm(`Excluir o treino "${editingWk.name}"? Os exercícios e o histórico são mantidos.`)) return;
+  store.workouts = store.workouts.filter((w) => w !== editingWk);
+  save();
+  $('wkDlg').close();
+  renderExercises();
+};
+$('wkForm').onsubmit = () => {
+  const name = $('wkName').value.trim();
+  if (editingWk) Object.assign(editingWk, { name, items: [...wkItems] });
+  else store.workouts.push({ id: uid(), name, items: [...wkItems] });
+  save();
+  renderExercises();
+};
+/** Envia a ficha como texto mais um link que abre o app já na importação. */
+$('wkShare').onclick = async () => {
+  const text = workoutsToText([{ ...editingWk, items: wkItems }], store.exercises);
+  const url = `${new URL('./', document.baseURI).href}#treino=${encodeShare(text)}`;
+  const body = `${text}\n\nAbrir no app Treino: ${url}`;
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: editingWk.name, text: body });
+      return;
+    }
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+  }
+  try {
+    await navigator.clipboard.writeText(body);
+    toast('Ficha e link copiados.');
+  } catch {
+    toast('Este navegador não deixa compartilhar.');
+  }
+};
+
+// ---------- importação de treinos (texto colado, arquivo ou link) ----------
+let impParsed = [];
+function previewImport() {
+  const text = $('impText').value;
+  impParsed = parseWorkouts(text);
+  $('impOk').disabled = !impParsed.length;
+  if (!impParsed.length) {
+    $('impPreview').innerHTML = text.trim() ? '<p class="warn">Não encontrei exercícios. Escreva um por linha, por exemplo: Supino máquina 3x12 20 kg</p>' : '';
+    return;
+  }
+  const known = new Set(store.exercises.filter((x) => !x.pose).map((x) => normName(x.name)));
+  $('impPreview').innerHTML = impParsed
+    .map((w) => {
+      const replaces = store.workouts.some((y) => workoutKey(y.name) === workoutKey(w.name));
+      return `<b>${esc(w.name)}${replaces ? '<em>substitui o atual</em>' : ''}</b>${w.items
+        .map((it) => `<p>${esc(it.name)} · ${it.sets} × ${it.reps}${it.load ? ` · ${kg(it.load)}` : ''}${it.rest ? ` · ${it.rest} s` : ''}${known.has(normName(it.name)) ? '' : '<em>novo</em>'}</p>`)
+        .join('')}`;
+    })
+    .join('');
+}
+function openImport(text = '') {
+  $('impText').value = text;
+  previewImport();
+  $('impDlg').showModal();
+}
+$('btnWkImport').onclick = () => openImport();
+$('impText').oninput = previewImport;
+$('impCancel').onclick = () => $('impDlg').close();
+$('impOpen').onclick = () => $('impFile').click();
+$('impFile').onchange = async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  $('impText').value = (await file.text()).slice(0, 20000);
+  previewImport();
+};
+$('impForm').onsubmit = () => {
+  if (!impParsed.length) return;
+  const r = applyWorkoutImport(store, impParsed, uid);
+  save();
+  renderExercises();
+  const novo = r.created ? `, ${r.created} ${r.created === 1 ? 'exercício novo' : 'exercícios novos'}` : '';
+  toast(`${r.workouts} ${r.workouts === 1 ? 'treino importado' : 'treinos importados'}${novo}.`);
 };
 
 // ---------- progresso ----------
@@ -958,8 +1302,9 @@ $('fileImport').onchange = async (e) => {
     if (!confirm(msg)) return;
     store.exercises = data.exercises;
     store.history = data.history;
+    store.workouts = data.workouts;
     store.settings = { ...store.settings, ...data.settings };
-    store.version = 5;
+    store.version = 6;
     save();
     location.reload();
   } catch (err) {
@@ -1065,5 +1410,17 @@ if (DEMO) {
   }
 } else {
   show('home');
+}
+// Link de ficha (#treino=...): abre a importação com o texto já preenchido.
+const shared = /^#treino=(.+)$/.exec(location.hash);
+if (shared) {
+  history.replaceState(null, '', location.pathname + location.search);
+  const text = decodeShare(shared[1]);
+  if (text) {
+    show('home');
+    openImport(text);
+  } else {
+    toast('O link de treino está incompleto ou corrompido.');
+  }
 }
 requestAnimationFrame(frame);

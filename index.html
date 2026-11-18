@@ -53,16 +53,26 @@
         </div>
         <div id="weekStats" class="week-stats"></div>
       </div>
+      <div class="sec-head">
+        <h2>Treinos</h2>
+        <span><button id="btnWkAbc" aria-label="Adicionar os treinos A, B e C pré-definidos">+ ABC</button><button id="btnWkImport">Importar</button><button id="btnWkAdd">+ Novo</button></span>
+      </div>
+      <ul id="wkList" class="list wklist"></ul>
       <button id="btnFree" class="freecard">
         <span class="avatar" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span>
         <span class="body"><b>Treino livre</b><small>A câmera identifica o exercício e conta sozinha. Halteres e peso do corpo.</small></span>
       </button>
+      <div class="sec-head"><h2>Exercícios</h2></div>
       <div id="filters" class="filters" role="tablist" aria-label="Filtrar por grupo muscular"></div>
       <ul id="exList" class="list"></ul>
     </section>
 
     <!-- Treino em andamento -->
     <section id="workout" class="view" hidden>
+      <div id="wSession" class="session" hidden>
+        <div class="session-head"><b id="wsName"></b><span id="wsPos"></span></div>
+        <ol id="wsQueue" class="queue" aria-label="Exercícios deste treino"></ol>
+      </div>
       <p id="wWarn" class="banner" hidden>Sensor desconectado. Toque em "Conectar" acima.</p>
       <p id="wSuggest" class="note" hidden><span id="wSuggestText"></span><button id="btnSuggest" class="primary"></button></p>
 
@@ -194,6 +204,19 @@
       <div id="pMuscles" class="panel"></div>
     </section>
 
+    <!-- Resumo do treino do dia -->
+    <section id="summary" class="view" hidden>
+      <div class="sum-head"><b id="sumTitle"></b><span id="sumPrs"></span></div>
+      <div id="sumTiles" class="tiles"></div>
+      <p id="sumCompare" class="note next" hidden></p>
+      <h2>Exercícios</h2>
+      <div id="sumList" class="panel"></div>
+      <div class="stack sum-actions">
+        <button id="btnShare" class="primary">Compartilhar resumo</button>
+        <button id="btnSumDone">Concluir</button>
+      </div>
+    </section>
+
     <!-- Histórico -->
     <section id="history" class="view" hidden>
       <div id="histList"></div>
@@ -292,6 +315,39 @@
         <button id="fDelete" type="button" class="danger" hidden>Excluir</button>
         <button type="button" id="fCancel">Cancelar</button>
         <button type="submit" class="primary">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="wkDlg">
+    <form method="dialog" id="wkForm">
+      <div class="grabber" aria-hidden="true"></div>
+      <h2 id="wkTitle">Novo treino</h2>
+      <label class="field">Nome<input id="wkName" type="text" required maxlength="40" autocomplete="off" placeholder="A · Pernas"></label>
+      <ol id="wkItems" class="wkitems"></ol>
+      <label class="field">Adicionar exercício<select id="wkPick"></select></label>
+      <div class="actions">
+        <button id="wkDelete" type="button" class="danger" hidden>Excluir</button>
+        <button id="wkShare" type="button" hidden>Enviar</button>
+        <button id="wkCancel" type="button">Cancelar</button>
+        <button type="submit" class="primary">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="impDlg">
+    <form method="dialog" id="impForm">
+      <div class="grabber" aria-hidden="true"></div>
+      <h2>Importar treino</h2>
+      <label class="field">Cole a ficha, um exercício por linha
+        <textarea id="impText" rows="7" spellcheck="false" placeholder="Treino A - Pernas&#10;Agachamento livre 3x12 50 kg&#10;Leg press 45 4x10 90 kg descanso 60 s&#10;&#10;Treino B - Costas&#10;Puxada alta 3x12 30 kg"></textarea>
+      </label>
+      <div id="impPreview" class="imp-preview"></div>
+      <input id="impFile" type="file" accept=".txt,text/plain" hidden>
+      <div class="actions">
+        <button id="impOpen" type="button">Arquivo</button>
+        <button id="impCancel" type="button">Cancelar</button>
+        <button id="impOk" type="submit" class="primary" disabled>Importar</button>
       </div>
     </form>
   </dialog>

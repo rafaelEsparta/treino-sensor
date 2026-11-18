@@ -193,6 +193,8 @@ export function validateImport(data) {
       name: e.name.slice(0, 40),
       exId: e.exId ? String(e.exId) : undefined,
       muscle: MUSCLES.includes(e.muscle) ? e.muscle : undefined,
+      ...(e.source === 'livre' ? { source: 'livre' } : {}),
+      ...(e.workoutId ? { workoutId: String(e.workoutId) } : {}), // feito dentro de um treino montado
       load: num(e.load, null),
       sets: e.sets
         .filter((s) => s && Number.isFinite(Number(s.reps)))
@@ -206,5 +208,14 @@ export function validateImport(data) {
         })),
     }));
   const settings = data.settings && typeof data.settings === 'object' ? data.settings : {};
-  return { exercises, history, settings };
+  // treinos montados: só itens que apontam para exercícios que existem
+  const ids = new Set(exercises.map((x) => x.id));
+  const workouts = (Array.isArray(data.workouts) ? data.workouts : [])
+    .filter((w) => w && typeof w.name === 'string' && w.name.trim() && Array.isArray(w.items))
+    .map((w) => ({
+      id: String(w.id || Math.random().toString(36).slice(2, 10)),
+      name: w.name.trim().slice(0, 40),
+      items: [...new Set(w.items.map(String).filter((id) => ids.has(id)))],
+    }));
+  return { exercises, history, settings, workouts };
 }

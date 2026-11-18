@@ -13,9 +13,9 @@ const SETS = 3;
 
 /** Treino de cada dia da semana (0 = segunda). `pose` marca exercício do treino livre. */
 const PLAN = [
-  { weekday: 0, items: ['Leg press 45', 'Cadeira extensora', 'Mesa flexora', 'Panturrilha sentado'] },
-  { weekday: 2, items: ['Supino máquina', 'Puxada alta', 'Desenvolvimento máquina', 'Tríceps na polia', { pose: 'rosca', load: 8, step: 2 }] },
-  { weekday: 4, items: ['Agachamento livre', 'Stiff', 'Cadeira abdutora', 'Remada baixa'] },
+  { weekday: 0, name: 'A · Pernas', items: ['Leg press 45', 'Cadeira extensora', 'Mesa flexora', 'Panturrilha sentado'] },
+  { weekday: 2, name: 'B · Superiores', items: ['Supino máquina', 'Puxada alta', 'Desenvolvimento máquina', 'Tríceps na polia', { pose: 'rosca', load: 8, step: 2 }] },
+  { weekday: 4, name: 'C · Pernas e costas', items: ['Agachamento livre', 'Stiff', 'Cadeira abdutora', 'Remada baixa'] },
 ];
 
 /** Exercícios que terminam batendo a meta, para a sugestão de carga aparecer. */
@@ -60,6 +60,9 @@ export function buildDemoStore(now = Date.now()) {
   monday.setHours(12, 0, 0, 0);
   monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
 
+  // um treino montado por dia do plano (o exercício do treino livre fica de fora)
+  const workouts = PLAN.map((day, i) => ({ id: `demo-wk-${i}`, name: day.name, items: day.items.filter((it) => typeof it === 'string').map((n) => byName.get(n).id) }));
+
   const state = new Map(); // por exercício: carga e "fôlego" (repetições que aguenta na 1ª série)
   const history = [];
   for (let w = 0; w < WEEKS; w++) {
@@ -84,7 +87,7 @@ export function buildDemoStore(now = Date.now()) {
           exId: x.id,
           muscle: x.muscle,
           load: s.load,
-          ...(x.pose ? { source: 'livre' } : {}),
+          ...(x.pose ? { source: 'livre' } : { workoutId: workouts[PLAN.indexOf(day)].id }),
           sets: reps.map((r, i) => ({
             reps: r,
             load: s.load,
@@ -129,5 +132,5 @@ export function buildDemoStore(now = Date.now()) {
     });
   }
 
-  return { version: 5, exercises, history };
+  return { version: 6, exercises, history, workouts };
 }

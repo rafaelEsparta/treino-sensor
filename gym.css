@@ -438,3 +438,57 @@ dialog h2 { margin: 8px 0 14px; text-transform: none; letter-spacing: -0.02em; f
   width: 100%;
   margin-top: 10px;
 }
+/* ---------- treinos montados ---------- */
+.sec-head { display: flex; align-items: center; justify-content: space-between; margin: 20px 4px 8px; }
+.sec-head h2 { margin: 0; }
+.sec-head span { display: flex; gap: 6px; }
+.sec-head button { min-height: 34px; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--text2); }
+.sec-head + .filters { margin-top: 0; }
+.list.wklist { padding-bottom: 12px; }
+.wklist li.next { border-color: var(--accent-line); }
+.wklist li.next .avatar { background: var(--accent); color: var(--on-accent, #14170f); }
+.wklist li.empty { display: block; padding: 18px 16px; font-size: 14px; }
+
+.session { margin: 0 0 12px; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--line); }
+.session-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.session-head b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-head span { flex: none; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.queue { list-style: none; display: flex; gap: 6px; margin: 0 -12px; padding: 0 12px; overflow-x: auto; scrollbar-width: none; }
+.queue::-webkit-scrollbar { display: none; }
+.queue button { flex: none; min-height: 34px; max-width: 150px; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue li.done button { background: var(--accent-bg); border-color: var(--accent-line); color: var(--mark); }
+.queue li.cur button { background: var(--text); border-color: var(--text); color: var(--page); }
+
+.wkitems { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; max-height: 38dvh; overflow-y: auto; }
+.wkitems li { display: grid; grid-template-columns: 1fr 40px 40px 40px; gap: 4px; align-items: center; padding: 4px 4px 4px 12px; border-radius: 12px; background: var(--surface2); }
+.wkitems li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.wkitems li span small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+.wkitems button { min-height: 40px; padding: 0; font-size: 16px; }
+.wkitems button[data-rm] { color: var(--critical); }
+.wkitems:empty::after { content: "Nenhum exercício ainda. Escolha abaixo."; color: var(--muted); font-size: 14px; padding: 8px 0; }
+
+.field textarea { padding: 12px; font: inherit; font-size: 15px; line-height: 1.4; width: 100%; resize: vertical; color: var(--text); background: var(--surface2); border: 1px solid var(--line); border-radius: var(--r-md); }
+.imp-preview { margin: 0 0 12px; max-height: 30dvh; overflow-y: auto; font-size: 14px; color: var(--text2); }
+.imp-preview:empty { display: none; }
+.imp-preview b { display: block; color: var(--text); margin-top: 8px; }
+.imp-preview b:first-child { margin-top: 0; }
+.imp-preview p { margin: 2px 0; font-variant-numeric: tabular-nums; }
+.imp-preview em { font-style: normal; color: var(--mark); font-weight: 700; font-size: 12px; margin-left: 6px; }
+.imp-preview .warn { color: var(--muted); }
+
+/* ---------- resumo do dia ---------- */
+.sum-head { display: flex; flex-direction: column; gap: 2px; margin: 4px 4px 14px; }
+.sum-head b { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+.sum-head span { color: var(--mark); font-weight: 700; font-size: 14px; }
+.sum-head span:empty { display: none; }
+#sumCompare { margin-top: 12px; }
+.srow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.srow:first-child { border-top: 0; padding-top: 0; }
+.srow:last-child { padding-bottom: 0; }
+.srow b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srow span { flex: none; color: var(--text2); font-size: 14px; font-variant-numeric: tabular-nums; }
+.srow.pr span { color: var(--mark); font-weight: 700; }
+.sum-actions { margin-top: 16px; }
+.day-head .daysum { min-height: 30px; padding: 2px 10px; margin-left: 8px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--text2); }
+.day-head .day-meta { display: flex; align-items: center; }
+.wklist li.empty b { color: var(--text2); }
