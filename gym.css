@@ -417,3 +417,24 @@ dialog h2 { margin: 8px 0 14px; text-transform: none; letter-spacing: -0.02em; f
 .hset input { width: 100%; padding: 10px; font-size: 16px; background: var(--surface2); }
 .hset button { min-height: 44px; padding: 0; color: var(--critical); font-size: 18px; }
 #hSets:empty::after { content: "Sem séries. Salvar assim exclui o registro."; display: block; color: var(--muted); font-size: 14px; padding: 8px 0; }
+
+/* Convite para instalar como app (celular) */
+.install {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.install p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.install button {
+  width: 100%;
+  margin-top: 10px;
+}
